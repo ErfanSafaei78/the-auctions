@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+  Semantic tokens, not a numeric ramp.
+
+  The board is one dense table plus two detail pages, so what a colour *means*
+  (page / panel / border / muted text) never changes — only its value does
+  between themes. Mapping both themes onto the same names here means component
+  markup carries no `dark:` variants at all: one class, correct in both.
+*/
+/*
+  Contrast floors, checked against canvas, surface and raised in both themes
+  (WCAG 2.x): fg and muted ≥ 7:1, subtle / accent / danger ≥ 4.5:1 (subtle
+  carries real labels and placeholders, not just decoration), line-strong and
+  focus rings ≥ 3:1. text-danger/80 on danger-soft still clears 4.5:1.
+  Re-check these if any value below changes.
+*/
+:root {
+  --canvas: #f4f6f8;
+  --surface: #ffffff;
+  --raised: #eceff3;
+  --line: #d9dee4;
+  --line-strong: #7c8795;
+  --fg: #0f172a;
+  --muted: #3f4a5a;
+  --subtle: #5b6675;
+  --accent: #1d4ed8;
+  --accent-contrast: #ffffff;
+  --accent-soft: rgb(29 78 216 / 0.10);
+  --danger: #a01d14;
+  --danger-soft: rgb(160 29 20 / 0.08);
+  --shadow-panel: 0 1px 2px -1px rgb(15 23 42 / 0.08), 0 4px 14px -8px rgb(15 23 42 / 0.10);
+}
+
+.dark {
+  --canvas: #0b0e13;
+  --surface: #12161d;
+  --raised: #1a1f28;
+  --line: #272e39;
+  --line-strong: #66717f;
+  --fg: #eef1f5;
+  --muted: #b8c0cc;
+  --subtle: #949eab;
+  --accent: #7fb0ff;
+  --accent-contrast: #0a1a33;
+  --accent-soft: rgb(127 176 255 / 0.14);
+  --danger: #ff8a80;
+  --danger-soft: rgb(255 138 128 / 0.12);
+  --shadow-panel: 0 1px 2px -1px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.04);
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --shadow-panel: var(--shadow-panel);
+
+  --font-sans: var(--font-iran), "IRANSans", "Vazirmatn", ui-sans-serif,
+    system-ui, sans-serif;
+
+  --animate-fade-in: fade-in 0.4s ease-out both;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+* {
+  border-color: var(--line);
+}
+
+html,
+body {
+  background-color: var(--canvas);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+  Every id, price and date on this board is a numeral. Tabular figures stop
+  the columns from shimmering as rows scroll past.
+*/
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The only scrollbar that matters is the table's, and it is always visible. */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
+}
