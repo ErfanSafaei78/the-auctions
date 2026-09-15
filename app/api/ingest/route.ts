@@ -1,3 +1,5 @@
+import { gunzipSync } from "node:zlib";
+
 import { coerceListPayload } from "@/lib/eauc/list";
 import { commitSnapshot } from "@/lib/eauc/sync";
 import { secretMatches } from "@/lib/secret";
@@ -15,6 +17,27 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/**
+ * Vercel rejects a request body over 4.5 MB before it reaches this route, and
+ * the raw list payload is past that, so a push has to arrive gzipped.
+ */
+const MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Sniffs the gzip magic number rather than trusting Content-Encoding: iOS
+ * Shortcuts cannot always set that header, and a mislabelled body would
+ * otherwise fail as a JSON parse error that says nothing useful.
+ */
+function decodeBody(body: Buffer): string {
+  if (body.length > 1 && body[0] === 0x1f && body[1] === 0x8b) {
+    return gunzipSync(body, {
+      maxOutputLength: MAX_DECOMPRESSED_BYTES,
+    }).toString("utf8");
+  }
+
+  return body.toString("utf8");
+}
+
 export async function POST(request: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -27,7 +50,8 @@ export async function POST(request: Request) {
 
   let raw;
   try {
-    raw = coerceListPayload(await request.json());
+    const body = Buffer.from(await request.arrayBuffer());
+    raw = coerceListPayload(JSON.parse(decodeBody(body)));
   } catch (error) {
     return Response.json(
       {
