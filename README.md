@@ -27,7 +27,7 @@ board you can filter, bookmark and share.
 | `/` | The board — 980-ish lots, filtered client-side from one snapshot |
 | `/auction/[auctionId]` | One auction, plus its sibling lots |
 | `/party/[partyId]` | One lot |
-| `/api/cron/auctions` | Daily sync (Bearer `CRON_SECRET`) — only from a network setadiran answers |
+| `/api/cron/auctions` | Daily sync (Bearer `CRON_SECRET`) — needs `EAUC_DIRECT_FETCH` |
 | `/api/ingest` | Accepts pushed rows from a runner inside Iran (Bearer `CRON_SECRET`) |
 | `/api/auctions/status` | Sync progress, polled by the sync button |
 | `/api/probe/eauc` | Temporary egress diagnostic — delete once settled |
@@ -45,16 +45,40 @@ Blob. A failed gate refuses the write, so a bad push leaves the previous good
 snapshot in place. Normalization deliberately stays on the server, so a runner
 supplies rows but never decides their order or shape.
 
-The cron at **03:30 UTC** (07:00 Tehran — Iran has no DST, so the offset is a
-constant +03:30) still exists and fetches directly. It fails from Vercel today
-and only records `lastError`; it costs nothing and starts working the day
-egress does.
-
 The board loads that snapshot once (~58 KB gzipped) and filters it in the
-browser. Detail pages read the same snapshot — they used to fetch setadiran
-live, which now means a ~30s timeout and an error on every view, so they render
-the row instead. The lot item grid and deposit amount only exist on upstream's
-per-lot endpoints, so those pages link out for them rather than showing them.
+browser. Detail pages read the same snapshot. The lot item grid and deposit
+amount exist only on upstream's per-lot endpoints, so those pages link out for
+them rather than showing them.
+
+## Hosting where setadiran is reachable
+
+Everything above is the **default**, which assumes the host cannot reach
+setadiran. Set one variable to invert that:
+
+```sh
+EAUC_DIRECT_FETCH=true
+```
+
+It is read in exactly one place, `lib/eauc/direct-fetch.ts`, and changes four
+behaviours at once:
+
+| | Default (Vercel) | `EAUC_DIRECT_FETCH=true` |
+|---|---|---|
+| `/api/cron/auctions` | `503 direct_fetch_disabled`, immediately | Fetches upstream and writes the snapshot |
+| همگام‌سازی button | Disabled, tooltip, «به‌زودی» | Live, with its polling progress UI |
+| `syncAuctionsAction` | Returns `unavailable` | Runs the sync |
+| Detail pages | Snapshot row; items and deposit link out | Full upstream detail, item grid and deposit |
+
+The cron fires at **03:30 UTC** (07:00 Tehran — Iran has no DST, so the offset
+is a constant +03:30). `vercel.json` schedules it on Vercel; on your own server
+use a system cron hitting the same route with the same Bearer token.
+
+Detail pages degrade rather than break: with the flag on, a failed upstream
+fetch falls back to the snapshot row instead of an error panel. The panel is
+reserved for a lot that neither source can produce.
+
+`/api/ingest` stays available either way, so a push still works on a host that
+could also fetch for itself.
 
 Row numbers are frozen into the data at normalize time (`snapshotRow`,
 `snapshotPage`), so filtering and paging can only ever subset the array — a row
@@ -77,6 +101,7 @@ Environment:
 |---|---|
 | `CRON_SECRET` | Authenticates `/api/ingest`, `/api/cron/auctions` and `/api/probe/eauc` |
 | `BLOB_READ_WRITE_TOKEN` | Injected by a linked Vercel Blob store |
+| `EAUC_DIRECT_FETCH` | `true` only where setadiran is reachable — see above |
 
 Without a Blob token the snapshot falls back to `.cache/auctions-snapshot.json`
 on disk, which is what makes local development work with no cloud setup.
@@ -88,10 +113,9 @@ a machine setadiran answers:
 curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/auctions
 ```
 
-The in-page **همگام‌سازی** button is disabled and labelled به‌زودی. It triggered
-a server-side fetch, which cannot work anywhere setadiran refuses — including
-production. Its server action survives unused in `lib/eauc/actions.ts`, ready
-to re-enable if that ever changes.
+Without `EAUC_DIRECT_FETCH` the in-page **همگام‌سازی** button is disabled and
+labelled به‌زودی, and this route answers `503` — both trigger a server-side
+fetch, which cannot work anywhere setadiran refuses.
 
 ## Pushing a snapshot
 

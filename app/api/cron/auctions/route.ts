@@ -1,3 +1,4 @@
+import { isDirectFetchEnabled } from "@/lib/eauc/direct-fetch";
 import { runAuctionSync } from "@/lib/eauc/sync";
 import { secretMatches } from "@/lib/secret";
 
@@ -18,6 +19,15 @@ export async function GET(request: Request) {
 
   if (!secretMatches(request.headers.get("authorization"), `Bearer ${secret}`)) {
     return new Response(null, { status: 401 });
+  }
+
+  // Refusing beats burning ~100s on a fetch that cannot succeed and then
+  // writing a lastError that reads like an upstream outage.
+  if (!isDirectFetchEnabled()) {
+    return Response.json(
+      { ok: false, reason: "direct_fetch_disabled" },
+      { status: 503 },
+    );
   }
 
   const outcome = await runAuctionSync();
