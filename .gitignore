@@ -27,3 +27,4 @@ next-env.d.ts
 
 # local snapshot cache (dev fallback when Blob is unavailable)
 .cache/
+.vercel
