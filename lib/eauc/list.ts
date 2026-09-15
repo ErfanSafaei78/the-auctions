@@ -7,9 +7,11 @@ export interface RawListResponse {
   records: number;
 }
 
-function parseListPayload(response: EaucResponse): RawListResponse {
-  const payload: unknown = JSON.parse(response.text);
-
+/**
+ * Shared by our own fetch and by /api/ingest, which receives this same upstream
+ * payload from a runner with Iranian egress rather than reading it directly.
+ */
+export function coerceListPayload(payload: unknown): RawListResponse {
   if (typeof payload !== "object" || payload === null) {
     throw new Error("Auction list payload was not an object.");
   }
@@ -27,6 +29,10 @@ function parseListPayload(response: EaucResponse): RawListResponse {
     gridModel,
     records: typeof records === "number" ? records : gridModel.length,
   };
+}
+
+function parseListPayload(response: EaucResponse): RawListResponse {
+  return coerceListPayload(JSON.parse(response.text));
 }
 
 /** The list body is ~600 KB, so it gets more room than a detail request. */
