@@ -72,18 +72,23 @@ Environment:
 
 | Variable | Needed for |
 |---|---|
-| `CRON_SECRET` | Authenticates `/api/cron/auctions` and `/api/probe/eauc` |
+| `CRON_SECRET` | Authenticates `/api/ingest`, `/api/cron/auctions` and `/api/probe/eauc` |
 | `BLOB_READ_WRITE_TOKEN` | Injected by a linked Vercel Blob store |
 
 Without a Blob token the snapshot falls back to `.cache/auctions-snapshot.json`
 on disk, which is what makes local development work with no cloud setup.
 
-Seed the first snapshot from a running instance with the **همگام‌سازی** button,
-or by hand:
+Seed a local snapshot by hand. This one fetches directly, so it only works from
+a machine setadiran answers:
 
 ```sh
 curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/auctions
 ```
+
+The in-page **همگام‌سازی** button is disabled and labelled به‌زودی. It triggered
+a server-side fetch, which cannot work anywhere setadiran refuses — including
+production. Its server action survives unused in `lib/eauc/actions.ts`, ready
+to re-enable if that ever changes.
 
 ## Pushing a snapshot
 

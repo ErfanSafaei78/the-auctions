@@ -11,16 +11,6 @@ import { getJalaliDateInDays, getTodayJalali } from "@/lib/format/jalali";
  */
 const STALE_AFTER_MS = 30 * 60 * 60 * 1000;
 
-/**
- * The manual sync button's server action is invoked via a request to this
- * page's own route, so it inherits this maxDuration rather than needing (or
- * being able to set) its own — route-segment config only applies to a Page,
- * Layout, or Route Handler, never to a bare "use server" file. Kept above the
- * client's 120s give-up: a merely-slow run should still finish and write
- * successfully after the polling UI has stopped waiting for it.
- */
-export const maxDuration = 150;
-
 interface BoardPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
@@ -62,7 +52,7 @@ export default async function BoardPage({ searchParams }: BoardPageProps) {
               records={snapshot.records.length}
               isStale={isStale}
             />
-            <SyncButton initialFetchedAt={snapshot.fetchedAt} />
+            <SyncButton />
           </div>
 
           <AuctionsExplorer
@@ -74,17 +64,13 @@ export default async function BoardPage({ searchParams }: BoardPageProps) {
           />
         </div>
       ) : (
-        // No live fetch here on purpose: a cold upstream pull on a pageview
-        // would be several megabytes and seconds of latency. The button below
-        // is the way to populate the board before the first cron run.
+        // No live fetch here: setadiran answers Iranian IPs only, so this
+        // server cannot reach it at all. Rows arrive via /api/ingest.
         <div className="mx-auto max-w-md rounded-xl border border-line bg-surface px-6 py-12 text-center shadow-panel">
           <p className="font-medium">هنوز داده‌ای ثبت نشده</p>
           <p className="mt-1 text-sm text-muted">
-            برای پر شدن تابلو، یک بار همگام‌سازی را اجرا کنید.
+            با اولین همگام‌سازی خودکار، تابلو پر می‌شود.
           </p>
-          <div className="mt-4 flex justify-center">
-            <SyncButton initialFetchedAt={null} />
-          </div>
         </div>
       )}
     </section>
