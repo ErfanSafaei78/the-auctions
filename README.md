@@ -25,8 +25,8 @@ board you can filter, bookmark and share.
 | Route | What it is |
 |---|---|
 | `/` | The board — 980-ish lots, filtered client-side from one snapshot |
-| `/auction/[auctionId]` | One auction, fetched live, plus its sibling lots |
-| `/party/[partyId]` | One lot, fetched live, plus its item grid |
+| `/auction/[auctionId]` | One auction, plus its sibling lots |
+| `/party/[partyId]` | One lot |
 | `/api/cron/auctions` | Daily sync (Bearer `CRON_SECRET`) — only from a network setadiran answers |
 | `/api/ingest` | Accepts pushed rows from a runner inside Iran (Bearer `CRON_SECRET`) |
 | `/api/auctions/status` | Sync progress, polled by the sync button |
@@ -51,7 +51,10 @@ and only records `lastError`; it costs nothing and starts working the day
 egress does.
 
 The board loads that snapshot once (~58 KB gzipped) and filters it in the
-browser. Detail pages always fetch live.
+browser. Detail pages read the same snapshot — they used to fetch setadiran
+live, which now means a ~30s timeout and an error on every view, so they render
+the row instead. The lot item grid and deposit amount only exist on upstream's
+per-lot endpoints, so those pages link out for them rather than showing them.
 
 Row numbers are frozen into the data at normalize time (`snapshotRow`,
 `snapshotPage`), so filtering and paging can only ever subset the array — a row
