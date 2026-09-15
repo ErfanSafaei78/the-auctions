@@ -76,19 +76,21 @@ export interface SyncOutcome {
   upstreamRecords?: number;
   fetchedAt?: string;
   fetchedAtJalali?: string;
-  reason?: "validation_failed" | "upstream_error";
+  reason?: "validation_failed" | "upstream_error" | "invalid_payload";
   detail?: string;
 }
 
 /**
- * The single writer. The cron route and the manual sync action both call
- * this — same retries, same validation gates, same state bookkeeping — so
- * there is exactly one code path that can ever touch the snapshot.
+ * The single writer. Every path that can change the snapshot ends here — our
+ * own fetch, and rows pushed to /api/ingest by a runner with Iranian egress —
+ * so the validation gates and state bookkeeping cannot be bypassed by
+ * whoever supplied the rows.
  */
-export async function runAuctionSync(): Promise<SyncOutcome> {
+export async function commitSnapshot(
+  raw: RawListResponse,
+): Promise<SyncOutcome> {
   try {
     const previous = await readSnapshot();
-    const raw = await fetchListWithRetry();
     const next = buildSnapshot(raw, new Date());
 
     const failure = validateSnapshot(next, previous);
@@ -131,4 +133,24 @@ export async function runAuctionSync(): Promise<SyncOutcome> {
 
     return { ok: false, reason: "upstream_error", detail };
   }
+}
+
+/**
+ * Fetch-then-commit, for the cron route and the manual sync action. Only
+ * usable from a network that setadiran answers — see /api/ingest for the
+ * path that does not fetch.
+ */
+export async function runAuctionSync(): Promise<SyncOutcome> {
+  let raw: RawListResponse;
+
+  try {
+    raw = await fetchListWithRetry();
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    await patchSyncState({ running: false, startedAt: null, lastError: detail });
+
+    return { ok: false, reason: "upstream_error", detail };
+  }
+
+  return commitSnapshot(raw);
 }
