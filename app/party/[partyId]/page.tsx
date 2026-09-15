@@ -7,7 +7,10 @@ import { NotFoundPanel } from "@/components/detail/NotFoundPanel";
 import { ScrapedFields } from "@/components/detail/ScrapedFields";
 import { EAUC_WELCOME_URL } from "@/lib/eauc/constants";
 import { fetchLotDetail } from "@/lib/eauc/detail";
+import { isDirectFetchEnabled } from "@/lib/eauc/direct-fetch";
 import { findRecordByPartyId, readSnapshot } from "@/lib/eauc/snapshot-store";
+import { lotFields } from "@/lib/eauc/snapshot-fields";
+import type { LotDetail } from "@/lib/eauc/types";
 import { toPersianDigits } from "@/lib/format/digits";
 import { cn } from "@/lib/cn";
 
@@ -36,18 +39,32 @@ export default async function LotDetailPage({ params }: LotDetailPageProps) {
   const { partyId } = await params;
   if (!/^\d+$/.test(partyId)) return <NotFoundPanel />;
 
-  // Snapshot lookup is for display and cross-linking only. The upstream
-  // endpoint keys solely off partyId, so this page works for a lot the
-  // snapshot has never seen.
   const record = findRecordByPartyId(await readSnapshot(), partyId);
-  const title = `پارتی ${toPersianDigits(record?.partyNo ?? partyId)}`;
 
-  let detail;
-  try {
-    detail = await fetchLotDetail(partyId);
-  } catch {
-    return <DetailError title={title} />;
+  // Upstream carries the item grid and deposit, which the snapshot cannot,
+  // so it wins where it is reachable. A failure falls back to the row rather
+  // than to an error panel — a partial page beats none.
+  let detail: LotDetail | null = null;
+  if (isDirectFetchEnabled()) {
+    try {
+      detail = await fetchLotDetail(partyId);
+    } catch {
+      detail = null;
+    }
   }
+
+  // The upstream endpoint keys solely off partyId, so with direct fetch on, a
+  // lot the snapshot has never seen still renders. With nothing from either,
+  // a failed fetch is an outage and a missing row is a genuine 404.
+  if (!record && !detail) {
+    return isDirectFetchEnabled() ? (
+      <DetailError title={`پارتی ${toPersianDigits(partyId)}`} />
+    ) : (
+      <NotFoundPanel />
+    );
+  }
+
+  const title = `پارتی ${toPersianDigits(record?.partyNo ?? partyId)}`;
 
   return (
     <section className="mx-auto w-full max-w-[72rem] animate-fade-in px-4 py-10 sm:px-6">
@@ -74,13 +91,31 @@ export default async function LotDetailPage({ params }: LotDetailPageProps) {
 
       <div className="rounded-xl border border-line bg-surface p-6 shadow-panel">
         <h2 className="mb-4 text-lg font-semibold">مشخصات</h2>
-        <ScrapedFields fields={detail.fields} />
+        <ScrapedFields
+          fields={detail?.fields ?? (record ? lotFields(record) : [])}
+        />
       </div>
 
       <div className="mt-4 rounded-xl border border-line bg-surface p-6 shadow-panel">
-        <h2 className="mb-4 text-lg font-semibold">کالاها</h2>
+        <h2 className="mb-4 text-lg font-semibold">
+          {detail ? "کالاها" : "کالاها و ودیعه"}
+        </h2>
 
-        {detail.items === null ? (
+        {!detail ? (
+          <>
+            <p className="text-sm text-muted">
+              فهرست کالاها و مبلغ ودیعه تنها در سامانه ستاد ایران در دسترس است.
+            </p>
+            <a
+              href={EAUC_WELCOME_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="mt-3 inline-block text-sm text-accent underline-offset-4 hover:underline"
+            >
+              مشاهده در ستاد ایران
+            </a>
+          </>
+        ) : detail.items === null ? (
           <p className="text-sm text-danger">
             فهرست کالاها از ستاد دریافت نشد. کمی بعد صفحه را تازه کنید.
           </p>
@@ -121,7 +156,7 @@ export default async function LotDetailPage({ params }: LotDetailPageProps) {
           </div>
         )}
 
-        {detail.depositAmount ? (
+        {detail?.depositAmount ? (
           <p className="mt-4 text-sm">
             <span className="text-muted">مبلغ ودیعه: </span>
             <span>{toPersianDigits(detail.depositAmount)}</span>

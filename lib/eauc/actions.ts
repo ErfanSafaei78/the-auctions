@@ -2,6 +2,7 @@
 
 import { after } from "next/server";
 
+import { isDirectFetchEnabled } from "./direct-fetch";
 import { runAuctionSync } from "./sync";
 import { patchSyncState, readSyncState } from "./sync-state";
 
@@ -19,7 +20,8 @@ const STALE_RUNNING_MS = 5 * 60 * 1000;
 export type SyncActionResult =
   | { status: "started" }
   | { status: "already-running"; startedAt: string }
-  | { status: "too-soon"; nextAllowedAt: string; fetchedAt: string };
+  | { status: "too-soon"; nextAllowedAt: string; fetchedAt: string }
+  | { status: "unavailable" };
 
 /**
  * Same-instance dedupe for a warm lambda. Best-effort only — the real,
@@ -30,6 +32,10 @@ export type SyncActionResult =
 let inFlight: Promise<void> | null = null;
 
 export async function syncAuctionsAction(): Promise<SyncActionResult> {
+  // A server action is a public endpoint whatever the UI renders, so the
+  // guard lives here too, not only in whether the button is clickable.
+  if (!isDirectFetchEnabled()) return { status: "unavailable" };
+
   const state = await readSyncState();
   const now = Date.now();
 
