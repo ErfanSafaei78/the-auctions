@@ -17,7 +17,7 @@ interface SyncButtonProps {
 }
 
 const UNAVAILABLE_NOTE =
-  "همگام‌سازی دستی از طریق سایت در دسترس نیست. داده‌ها روزی یک‌بار به‌صورت خودکار به‌روز می‌شود.";
+  "همگام‌سازی دستی از طریق سایت در دسترس نیست. داده‌ها هر روز ساعت ۱۲:۰۰ به‌وقت تهران به‌صورت خودکار به‌روز می‌شود.";
 
 /**
  * Two states of one control, split so each calls its own hooks: a React
