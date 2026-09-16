@@ -74,13 +74,19 @@ async function writeStore(store: TelegramSubscriptionStore) {
  * Best-effort read-modify-write, same tradeoff as sync-state.ts: write
  * volume here is one bot chat's worth of taps, so a lost race just means an
  * occasional retry, not corruption worth a real lock for.
+ *
+ * `changed` gates the write deliberately: a lookup that found nothing to do
+ * must never write back the store it just read — otherwise a concurrent
+ * writer's fresher state (e.g. a subscription just created by the site,
+ * milliseconds before the bot's /start looks it up) gets clobbered by a
+ * stale empty read that had no business writing at all.
  */
 async function mutate<T>(
-  fn: (store: TelegramSubscriptionStore) => T,
+  fn: (store: TelegramSubscriptionStore) => { result: T; changed: boolean },
 ): Promise<T> {
   const store = await readStore();
-  const result = fn(store);
-  await writeStore(store);
+  const { result, changed } = fn(store);
+  if (changed) await writeStore(store);
   return result;
 }
 
@@ -104,7 +110,7 @@ export async function createPendingSubscription(
 
   return mutate((store) => {
     store.subscriptions.push(subscription);
-    return subscription;
+    return { result: subscription, changed: true };
   });
 }
 
@@ -117,12 +123,12 @@ export async function linkSubscription(
   id: string,
   chatId: number,
 ): Promise<LinkResult> {
-  return mutate((store) => {
+  return mutate<LinkResult>((store) => {
     const subscription = store.subscriptions.find((item) => item.id === id);
-    if (!subscription) return { status: "not_found" };
+    if (!subscription) return { result: { status: "not_found" }, changed: false };
 
     subscription.chatId = chatId;
-    return { status: "linked", subscription };
+    return { result: { status: "linked", subscription }, changed: true };
   });
 }
 
@@ -142,10 +148,10 @@ export async function deleteSubscription(
     const index = store.subscriptions.findIndex(
       (item) => item.id === id && item.chatId === chatId,
     );
-    if (index === -1) return false;
+    if (index === -1) return { result: false, changed: false };
 
     store.subscriptions.splice(index, 1);
-    return true;
+    return { result: true, changed: true };
   });
 }
 
@@ -157,8 +163,13 @@ export async function markNotified(
 
   const idSet = new Set(ids);
   await mutate((store) => {
+    let changed = false;
     for (const subscription of store.subscriptions) {
-      if (idSet.has(subscription.id)) subscription.lastNotifiedAt = when;
+      if (idSet.has(subscription.id)) {
+        subscription.lastNotifiedAt = when;
+        changed = true;
+      }
     }
+    return { result: undefined, changed };
   });
 }
