@@ -69,9 +69,12 @@ behaviours at once:
 | `syncAuctionsAction` | Returns `unavailable` | Runs the sync |
 | Detail pages | Snapshot row; items and deposit link out | Full upstream detail, item grid and deposit |
 
-The cron fires at **03:30 UTC** (07:00 Tehran — Iran has no DST, so the offset
-is a constant +03:30). `vercel.json` schedules it on Vercel; on your own server
-use a system cron hitting the same route with the same Bearer token.
+The cron fires at **08:30 UTC** (12:00 Tehran — Iran has no DST, so the offset
+is a constant +03:30). Set this late rather than at 07:00: the organizations
+that list auctions add that day's records between roughly 07:00 and 10:00
+Tehran, so a morning sync still mirrors yesterday's board. `vercel.json`
+schedules it on Vercel; on your own server use a system cron hitting the same
+route with the same Bearer token.
 
 Detail pages degrade rather than break: with the flag on, a failed upstream
 fetch falls back to the snapshot row instead of an error panel. The panel is
