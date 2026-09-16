@@ -86,7 +86,7 @@ export default async function BoardPage({ searchParams }: BoardPageProps) {
           <p className="mt-1 text-sm text-muted">
             {canSync
               ? "برای پر شدن تابلو، یک بار همگام‌سازی را اجرا کنید."
-              : "با اولین همگام‌سازی خودکار، تابلو پر می‌شود."}
+              : "با اولین همگام‌سازی خودکار (هر روز ساعت ۱۲:۰۰ به‌وقت تهران)، تابلو پر می‌شود."}
           </p>
           {canSync ? (
             <div className="mt-4 flex justify-center">
