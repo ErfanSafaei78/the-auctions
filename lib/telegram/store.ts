@@ -47,29 +47,34 @@ interface StoreWithEtag {
  * A mutation must never treat a failed read as an empty store: EMPTY_STORE
  * plus an unconditional (no-etag) write would silently overwrite every
  * existing subscription with just the one this call is trying to add.
+ *
+ * Reads via get(..., { useCache: false }) rather than head() + a fetch of
+ * the public CDN URL — the CDN path can lag behind a write that just
+ * happened in a *different* invocation (no amount of cache-busting query
+ * params helps if head()'s own metadata is what's stale), observed live as
+ * a just-linked subscription reading back as never-linked a moment later.
+ * useCache: false reads from origin storage instead, at the cost of a
+ * slower read — an acceptable trade at this write volume.
  */
 async function readStoreWithEtag(): Promise<StoreWithEtag> {
   if (!hasBlobCredentials()) return { store: await readLocal(), etag: undefined };
 
-  const { head, BlobNotFoundError } = await import("@vercel/blob");
+  const { get } = await import("@vercel/blob");
 
-  let meta;
-  try {
-    meta = await head(SUBSCRIPTIONS_PATHNAME);
-  } catch (error) {
-    if (error instanceof BlobNotFoundError) return { store: EMPTY_STORE, etag: undefined };
-    throw error;
-  }
-
-  const response = await fetch(`${meta.url}?v=${meta.uploadedAt.getTime()}`, {
-    cache: "no-store",
+  const result = await get(SUBSCRIPTIONS_PATHNAME, {
+    access: "public",
+    useCache: false,
   });
-  if (!response.ok) {
-    throw new Error(`Telegram subscriptions blob fetch failed: ${response.status}`);
+  if (!result) return { store: EMPTY_STORE, etag: undefined };
+  if (result.statusCode !== 200) {
+    throw new Error(
+      `Telegram subscriptions blob get returned ${result.statusCode}`,
+    );
   }
 
-  const parsed = (await response.json()) as Partial<TelegramSubscriptionStore>;
-  return { store: { ...EMPTY_STORE, ...parsed }, etag: meta.etag };
+  const text = await new Response(result.stream).text();
+  const parsed = JSON.parse(text) as Partial<TelegramSubscriptionStore>;
+  return { store: { ...EMPTY_STORE, ...parsed }, etag: result.blob.etag };
 }
 
 /** Lenient, display-only read: degrades to "no subscriptions" on any error rather than throwing. */
