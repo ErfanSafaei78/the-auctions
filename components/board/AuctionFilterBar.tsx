@@ -19,11 +19,15 @@ import type { SnapshotFacets } from "@/lib/eauc/types";
 import { toPersianDigits } from "@/lib/format/digits";
 import { formatCount } from "@/lib/format/number";
 
+import { TelegramSubscribeButton } from "./TelegramSubscribeButton";
+
 interface AuctionFilterBarProps {
   filters: AuctionFilters;
   facets: SnapshotFacets;
   onChange: (next: Partial<AuctionFilters>) => void;
   onClear: () => void;
+  /** False when TELEGRAM_BOT_TOKEN/TELEGRAM_BOT_USERNAME aren't set. */
+  telegramEnabled: boolean;
 }
 
 export function AuctionFilterBar({
@@ -31,6 +35,7 @@ export function AuctionFilterBar({
   facets,
   onChange,
   onClear,
+  telegramEnabled,
 }: AuctionFilterBarProps) {
   const activeCount = countActiveFilters(filters);
 
@@ -178,6 +183,7 @@ export function AuctionFilterBar({
         </button>
 
         <div className="flex items-center gap-1">
+          {telegramEnabled ? <TelegramSubscribeButton filters={filters} /> : null}
           {activeCount > 0 ? (
             <Button type="button" variant="ghost" size="sm" onClick={onClear}>
               پاک کردن همه

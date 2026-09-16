@@ -123,6 +123,29 @@ export function countActiveFilters(filters: AuctionFilters) {
   return count;
 }
 
+/** Short human label for a filter set, used on the Telegram subscribe button and in notification messages. */
+export function summarizeFilters(filters: AuctionFilters): string {
+  const parts: string[] = [];
+
+  if (filters.goodsGroups.length > 0) parts.push(filters.goodsGroups.join("، "));
+  if (filters.lotProvinces.length > 0) parts.push(filters.lotProvinces.join("، "));
+  if (filters.lotCities.length > 0) parts.push(filters.lotCities.join("، "));
+  if (filters.hasReservePrice !== "any") {
+    parts.push(
+      filters.hasReservePrice === "yes" ? "قیمت پایه دارد" : "بدون قیمت پایه",
+    );
+  }
+  if (filters.deadlinePreset === "open") parts.push("مهلت در جریان");
+  if (filters.deadlinePreset === "soon") parts.push("مهلت تا ۷ روز");
+  if (filters.deadlineFrom || filters.deadlineTo) {
+    parts.push(`مهلت ${filters.deadlineFrom || "…"} تا ${filters.deadlineTo || "…"}`);
+  }
+  if (filters.auctionNo) parts.push(`مزایده ${filters.auctionNo}`);
+  if (filters.lotNo) parts.push(`پارتی ${filters.lotNo}`);
+
+  return parts.length > 0 ? parts.join(" · ") : "همه پارتی‌ها";
+}
+
 export interface DeadlineWindow {
   /** Jalali "YYYY/MM/DD" for today in Tehran. */
   today: string;
