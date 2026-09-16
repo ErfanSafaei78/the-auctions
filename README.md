@@ -20,6 +20,30 @@ The upstream board is a Struts/jqGrid app with three defects:
 This reads the same public data once a day, normalizes it, and renders it as a
 board you can filter, bookmark and share.
 
+## If you're in Iran
+
+The public deployment only gets fresh data once a day, at noon Tehran time,
+because `eauc.setadiran.ir` answers Iranian IPs only and the hosting can't
+reach it. Run the app on your own machine instead, and you can pull fresh
+data whenever you want:
+
+```sh
+git clone https://github.com/ErfanSafaei78/the-auctions.git
+cd the-auctions
+pnpm install
+echo "EAUC_DIRECT_FETCH=true" > .env.local
+pnpm dev
+```
+
+`EAUC_DIRECT_FETCH` is the one variable that matters here — set it to the
+literal string `true`. With it set, open `http://localhost:3000` and use the
+**همگام‌سازی** (sync) button on the board: it fetches straight from
+setadiran and refreshes your local snapshot, no `CRON_SECRET` required for
+that button (it's rate-limited to once every 4 hours per running instance).
+Full details, including the other env vars and the direct-fetch route, are
+in [Setup](#setup) and [Hosting where setadiran is
+reachable](#hosting-where-setadiran-is-reachable) below.
+
 ## Routes
 
 | Route | What it is |
