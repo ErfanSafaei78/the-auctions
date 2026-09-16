@@ -180,9 +180,39 @@ Set up your own bot:
      -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
    ```
 
+   Must be run again after every value change of `TELEGRAM_WEBHOOK_SECRET`,
+   and only after that env var is live on the deployment — a stale or
+   mismatched secret is the most common cause of a bot that never replies.
+4. Optional, cosmetic: register the command menu Telegram shows when typing
+   `/` in the chat.
+
+   ```sh
+   curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setMyCommands" \
+     -H "content-type: application/json" \
+     -d '{"commands":[{"command":"list","description":"فیلترهای فعال من"},{"command":"help","description":"راهنما"}]}'
+   ```
+
 Without `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME` set, the subscribe
 button doesn't render and the notify step is skipped — everything else on
 the board works exactly as before.
+
+### Debugging a bot that doesn't reply
+
+```sh
+curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/getWebhookInfo"
+```
+
+- `url` empty → `setWebhook` (step 3) was never run.
+- `last_error_message` mentions `401` → `TELEGRAM_WEBHOOK_SECRET` on the
+  deployment doesn't match what `setWebhook` was called with. Redeploy after
+  changing the env var, then re-run `setWebhook`.
+- `last_error_message` mentions `500` → the route threw; check the
+  deployment's function logs for `/api/telegram/webhook`.
+- No error, `pending_update_count: 0` → Telegram delivered the update and
+  got a 200 back. The route itself replies to every message it receives,
+  including unrecognized ones, so this shouldn't happen — if it does, the
+  function logs (the route logs every update it receives, and any outbound
+  Telegram API call it made) will show why.
 
 ## Pushing a snapshot
 

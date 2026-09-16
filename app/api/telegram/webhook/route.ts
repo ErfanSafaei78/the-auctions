@@ -119,16 +119,31 @@ export async function POST(request: Request) {
   }
 
   const update = (await request.json()) as TelegramUpdate;
+  console.log("telegram update", {
+    hasMessage: Boolean(update.message),
+    text: update.message?.text,
+    callbackData: update.callback_query?.data,
+  });
+
+  // Best-effort reply target for the catch block below — a thrown error
+  // must not go silent from the user's side, only from ours.
+  const chatId = update.message?.chat.id ?? update.callback_query?.message?.chat.id;
 
   try {
     if (update.message?.text) {
-      const chatId = update.message.chat.id;
       const text = update.message.text.trim();
 
       if (text === "/list") {
-        await handleList(chatId);
+        await handleList(update.message.chat.id);
+      } else if (text === "/help") {
+        await handleStart(update.message.chat.id, undefined);
       } else if (text.startsWith("/start")) {
-        await handleStart(chatId, text.split(/\s+/)[1]);
+        await handleStart(update.message.chat.id, text.split(/\s+/)[1]);
+      } else {
+        await sendTelegramMessage(
+          update.message.chat.id,
+          "دستور شناخته‌شده نیست.\n/help راهنما\n/list فیلترهای فعال شما",
+        );
       }
     } else if (update.callback_query?.data?.startsWith(DELETE_PREFIX)) {
       const { id, data, message } = update.callback_query;
@@ -143,6 +158,14 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     console.error("Telegram webhook handling failed", error);
+    if (chatId !== undefined) {
+      // Never let a thrown error read as the bot ignoring the user — but
+      // this send can itself fail (bad token, etc.), so it's fire-and-forget.
+      await sendTelegramMessage(
+        chatId,
+        "خطایی رخ داد. لطفاً کمی بعد دوباره امتحان کنید.",
+      ).catch(() => {});
+    }
   }
 
   // Telegram only cares that this returns 200 — anything else triggers retries.
