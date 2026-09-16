@@ -36,27 +36,53 @@ async function writeLocal(store: TelegramSubscriptionStore) {
   await writeFile(LOCAL_PATH, JSON.stringify(store), "utf8");
 }
 
-async function readStore(): Promise<TelegramSubscriptionStore> {
-  if (!hasBlobCredentials()) return readLocal();
+interface StoreWithEtag {
+  store: TelegramSubscriptionStore;
+  /** undefined when the blob has never been written — nothing to match against yet. */
+  etag: string | undefined;
+}
 
-  const { head } = await import("@vercel/blob");
+/**
+ * Throws on any failure except "never written yet" — used only by mutate().
+ * A mutation must never treat a failed read as an empty store: EMPTY_STORE
+ * plus an unconditional (no-etag) write would silently overwrite every
+ * existing subscription with just the one this call is trying to add.
+ */
+async function readStoreWithEtag(): Promise<StoreWithEtag> {
+  if (!hasBlobCredentials()) return { store: await readLocal(), etag: undefined };
 
+  const { head, BlobNotFoundError } = await import("@vercel/blob");
+
+  let meta;
   try {
-    const meta = await head(SUBSCRIPTIONS_PATHNAME);
-    const response = await fetch(
-      `${meta.url}?v=${meta.uploadedAt.getTime()}`,
-      { cache: "no-store" },
-    );
-    if (!response.ok) return EMPTY_STORE;
+    meta = await head(SUBSCRIPTIONS_PATHNAME);
+  } catch (error) {
+    if (error instanceof BlobNotFoundError) return { store: EMPTY_STORE, etag: undefined };
+    throw error;
+  }
 
-    const parsed = (await response.json()) as Partial<TelegramSubscriptionStore>;
-    return { ...EMPTY_STORE, ...parsed };
-  } catch {
+  const response = await fetch(`${meta.url}?v=${meta.uploadedAt.getTime()}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`Telegram subscriptions blob fetch failed: ${response.status}`);
+  }
+
+  const parsed = (await response.json()) as Partial<TelegramSubscriptionStore>;
+  return { store: { ...EMPTY_STORE, ...parsed }, etag: meta.etag };
+}
+
+/** Lenient, display-only read: degrades to "no subscriptions" on any error rather than throwing. */
+async function readStore(): Promise<TelegramSubscriptionStore> {
+  try {
+    return (await readStoreWithEtag()).store;
+  } catch (error) {
+    console.error("Telegram subscriptions blob read failed", error);
     return EMPTY_STORE;
   }
 }
 
-async function writeStore(store: TelegramSubscriptionStore) {
+async function writeStore(store: TelegramSubscriptionStore, ifMatch: string | undefined) {
   if (!hasBlobCredentials()) return writeLocal(store);
 
   const { put } = await import("@vercel/blob");
@@ -67,27 +93,52 @@ async function writeStore(store: TelegramSubscriptionStore) {
     allowOverwrite: true,
     contentType: "application/json",
     cacheControlMaxAge: 60,
+    // Compare-and-swap: only write if nobody else has written since we read.
+    // Without this, two overlapping read-modify-write cycles (e.g. the site
+    // creating a subscription and the bot linking a different one within
+    // the same second) can each read a valid-looking copy and the slower
+    // one's write silently discards the faster one's — observed live as a
+    // freshly linked subscription's chatId reverting to null.
+    ...(ifMatch ? { ifMatch } : {}),
   });
 }
 
+/** Retries a few times when a concurrent writer won the race, then gives up loudly. */
+const MAX_MUTATE_ATTEMPTS = 5;
+
 /**
- * Best-effort read-modify-write, same tradeoff as sync-state.ts: write
- * volume here is one bot chat's worth of taps, so a lost race just means an
- * occasional retry, not corruption worth a real lock for.
- *
  * `changed` gates the write deliberately: a lookup that found nothing to do
- * must never write back the store it just read — otherwise a concurrent
- * writer's fresher state (e.g. a subscription just created by the site,
- * milliseconds before the bot's /start looks it up) gets clobbered by a
- * stale empty read that had no business writing at all.
+ * must never write back the store it just read — that would be a no-op CAS
+ * write at best, and at worst races a concurrent writer for no reason.
  */
 async function mutate<T>(
   fn: (store: TelegramSubscriptionStore) => { result: T; changed: boolean },
 ): Promise<T> {
-  const store = await readStore();
-  const { result, changed } = fn(store);
-  if (changed) await writeStore(store);
-  return result;
+  const { BlobPreconditionFailedError } = await import("@vercel/blob");
+
+  for (let attempt = 1; attempt <= MAX_MUTATE_ATTEMPTS; attempt += 1) {
+    const { store, etag } = await readStoreWithEtag();
+    const { result, changed } = fn(store);
+    if (!changed) return result;
+    if (!hasBlobCredentials()) {
+      await writeStore(store, undefined);
+      return result;
+    }
+
+    try {
+      await writeStore(store, etag);
+      return result;
+    } catch (error) {
+      const isLastAttempt = attempt === MAX_MUTATE_ATTEMPTS;
+      if (error instanceof BlobPreconditionFailedError && !isLastAttempt) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  // Unreachable — the loop above always returns or throws.
+  throw new Error("Telegram subscription store: exhausted retries");
 }
 
 export async function readSubscriptions(): Promise<TelegramSubscription[]> {
