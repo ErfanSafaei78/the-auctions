@@ -5,6 +5,7 @@ import { isDirectFetchEnabled } from "@/lib/eauc/direct-fetch";
 import { parseAuctionFilters, parsePagination } from "@/lib/eauc/filters";
 import { readSnapshot } from "@/lib/eauc/snapshot-store";
 import { getJalaliDateInDays, getTodayJalali } from "@/lib/format/jalali";
+import { isTelegramConfigured } from "@/lib/telegram/config";
 
 /**
  * The ±59 min jitter on a Hobby cron means a 24h threshold would false-positive
@@ -44,6 +45,7 @@ export default async function BoardPage({ searchParams }: BoardPageProps) {
     : false;
 
   const canSync = isDirectFetchEnabled();
+  const telegramEnabled = isTelegramConfigured();
 
   return (
     <section className="mx-auto w-full max-w-[112rem] animate-fade-in px-4 py-6 sm:px-6">
@@ -76,6 +78,7 @@ export default async function BoardPage({ searchParams }: BoardPageProps) {
             initialPage={page}
             initialPerPage={perPage}
             deadlineWindow={deadlineWindow}
+            telegramEnabled={telegramEnabled}
           />
         </div>
       ) : (

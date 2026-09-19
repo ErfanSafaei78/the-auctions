@@ -7,6 +7,7 @@ import { buildSnapshot } from "./normalize";
 import { readSnapshot, SNAPSHOT_TAG, writeSnapshot } from "./snapshot-store";
 import { patchSyncState } from "./sync-state";
 import type { AuctionSnapshot } from "./types";
+import { notifyNewAuctions } from "@/lib/telegram/notify";
 
 /** Normalization dropping more than 5% of rows means the shape changed. */
 const MIN_NORMALIZED_RATIO = 0.95;
@@ -110,6 +111,12 @@ export async function commitSnapshot(
 
     await writeSnapshot(next);
     revalidateTag(SNAPSHOT_TAG);
+
+    // Best-effort: a failed Telegram send must never undo or fail a snapshot
+    // write that already succeeded.
+    await notifyNewAuctions(previous, next).catch((error) => {
+      console.error("Telegram notify crashed", error);
+    });
 
     await patchSyncState({
       fetchedAt: next.fetchedAt,

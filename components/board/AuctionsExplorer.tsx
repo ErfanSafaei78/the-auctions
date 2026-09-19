@@ -27,6 +27,7 @@ interface AuctionsExplorerProps {
   initialPage: number;
   initialPerPage: number;
   deadlineWindow: DeadlineWindow;
+  telegramEnabled: boolean;
 }
 
 /** Text edits should not push a history entry per keystroke. */
@@ -38,6 +39,7 @@ export function AuctionsExplorer({
   initialPage,
   initialPerPage,
   deadlineWindow,
+  telegramEnabled,
 }: AuctionsExplorerProps) {
   const router = useRouter();
 
@@ -183,6 +185,7 @@ export function AuctionsExplorer({
         facets={snapshot.facets}
         onChange={handleFilterChange}
         onClear={handleClear}
+        telegramEnabled={telegramEnabled}
       />
 
       <p className="text-sm text-muted">
