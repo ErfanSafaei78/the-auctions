@@ -1,15 +1,13 @@
 import "server-only";
 
-import {
-  applyAuctionFilters,
-  buildAuctionQuery,
-  type AuctionFilters,
-} from "@/lib/eauc/filters";
+import { applyAuctionFilters, type AuctionFilters } from "@/lib/eauc/filters";
 import type { AuctionRecord, AuctionSnapshot } from "@/lib/eauc/types";
+import { toPersianDigits } from "@/lib/format/digits";
 import { getJalaliDateInDays, getTodayJalali } from "@/lib/format/jalali";
 
 import { escapeHtml, sendTelegramMessage } from "./bot";
-import { isTelegramConfigured, siteOrigin } from "./config";
+import { isTelegramConfigured } from "./config";
+import { boardUrl } from "./links";
 import { markNotified, readSubscriptions } from "./store";
 import type { TelegramSubscription } from "./types";
 
@@ -35,9 +33,7 @@ function buildMessage(
   matches: AuctionRecord[],
   filters: AuctionFilters,
 ) {
-  const origin = siteOrigin();
-  const query = buildAuctionQuery(filters, 1, 30);
-  const link = origin ? `${origin}/?${query}` : `/?${query}`;
+  const link = boardUrl(filters);
 
   const titles = matches
     .slice(0, MAX_TITLES_IN_MESSAGE)
@@ -50,9 +46,9 @@ function buildMessage(
       : "";
 
   return (
-    `<b>${matches.length} پارتی جدید</b> مطابق «${escapeHtml(label)}»\n\n` +
-    `${titles}${more}\n\n` +
-    `<a href="${link}">مشاهده در تابلو</a>`
+    `<b>${toPersianDigits(String(matches.length))} پارتی جدید</b> مطابق «${escapeHtml(label)}»\n\n` +
+    `${titles}${more}` +
+    (link ? `\n\n<a href="${link}">مشاهده در تابلو</a>` : "")
   );
 }
 

@@ -4,10 +4,10 @@ import { telegramBotToken } from "./config";
 
 const API_BASE = "https://api.telegram.org";
 
-interface InlineKeyboardButton {
-  text: string;
-  callback_data: string;
-}
+/** Telegram requires exactly one action per button — a callback or a link. */
+type InlineKeyboardButton =
+  | { text: string; callback_data: string }
+  | { text: string; url: string };
 
 async function callTelegramApi(method: string, payload: Record<string, unknown>) {
   const token = telegramBotToken();

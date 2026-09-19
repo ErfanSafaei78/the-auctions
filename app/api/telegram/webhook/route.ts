@@ -5,6 +5,8 @@ import {
   sendTelegramMessage,
 } from "@/lib/telegram/bot";
 import { telegramWebhookSecret } from "@/lib/telegram/config";
+import { boardUrl } from "@/lib/telegram/links";
+import { toPersianDigits } from "@/lib/format/digits";
 import {
   deleteSubscription,
   linkSubscription,
@@ -34,13 +36,35 @@ interface TelegramUpdate {
 
 const DELETE_PREFIX = "delete:";
 
-function subscriptionsKeyboard(subscriptions: TelegramSubscription[]) {
-  return subscriptions.map((subscription) => [
-    {
-      text: `🗑 حذف «${subscription.label}»`,
-      callback_data: `${DELETE_PREFIX}${subscription.id}`,
-    },
-  ]);
+/**
+ * Labels go in the message body, not on the buttons: a filter summary is
+ * long enough that Telegram would truncate two different ones into the same
+ * unreadable stub. The buttons carry the row number instead, and the body
+ * says which number is which.
+ */
+function renderList(subscriptions: TelegramSubscription[]) {
+  const lines = subscriptions.map(
+    (subscription, index) =>
+      `${toPersianDigits(String(index + 1))}. ${escapeHtml(subscription.label)}`,
+  );
+
+  const keyboard = subscriptions.map((subscription, index) => {
+    const number = toPersianDigits(String(index + 1));
+    const url = boardUrl(subscription.filters);
+
+    return [
+      ...(url ? [{ text: `🔍 مشاهده ${number}`, url }] : []),
+      {
+        text: `🗑 حذف ${number}`,
+        callback_data: `${DELETE_PREFIX}${subscription.id}`,
+      },
+    ];
+  });
+
+  return {
+    text: `<b>فیلترهای فعال شما (${toPersianDigits(String(subscriptions.length))}):</b>\n\n${lines.join("\n")}`,
+    keyboard,
+  };
 }
 
 async function handleStart(chatId: number, payload: string | undefined) {
@@ -74,9 +98,8 @@ async function handleList(chatId: number) {
     return;
   }
 
-  await sendTelegramMessage(chatId, `فیلترهای فعال شما (${subscriptions.length}):`, {
-    keyboard: subscriptionsKeyboard(subscriptions),
-  });
+  const { text, keyboard } = renderList(subscriptions);
+  await sendTelegramMessage(chatId, text, { keyboard });
 }
 
 async function handleDelete(
@@ -94,9 +117,8 @@ async function handleDelete(
     return;
   }
 
-  await editMessageText(chatId, messageId, `فیلترهای فعال شما (${remaining.length}):`, {
-    keyboard: subscriptionsKeyboard(remaining),
-  });
+  const { text, keyboard } = renderList(remaining);
+  await editMessageText(chatId, messageId, text, { keyboard });
 }
 
 /**

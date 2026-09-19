@@ -172,7 +172,11 @@ Telegram chat id **is** the identity. Build a filter on the board, click
 **اطلاع‌رسانی در تلگرام**, and it opens the bot with that filter attached.
 Multiple filters per chat are independent — a "group + reserve price" filter
 and a "city + date range" filter each notify on their own. `/list` inside
-the bot shows your active filters with a delete button on each.
+the bot shows your active filters, each with a button that reopens the board
+on exactly those filters and one that deletes it. Those links need an
+absolute origin, so `SITE_URL` must be set on any deployment whose own domain
+isn't the right target — without it the buttons are dropped rather than
+rendered broken.
 
 Set up your own bot:
 
