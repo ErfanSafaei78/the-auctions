@@ -128,7 +128,8 @@ Environment:
 | Variable | Needed for |
 |---|---|
 | `CRON_SECRET` | Authenticates `/api/ingest`, `/api/cron/auctions` and `/api/probe/eauc` |
-| `BLOB_READ_WRITE_TOKEN` | Injected by a linked Vercel Blob store |
+| `BLOB_READ_WRITE_TOKEN` | Injected by a linked Vercel Blob store — holds the snapshot |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Injected by the linked Upstash Redis store — holds Telegram subscriptions |
 | `EAUC_DIRECT_FETCH` | `true` only where setadiran is reachable — see above |
 | `TELEGRAM_BOT_TOKEN` | Telegram notifications — see [below](#telegram-notifications) |
 | `TELEGRAM_BOT_USERNAME` | Same, without the `@` (e.g. `the_auctions_bot`) |
@@ -156,6 +157,15 @@ added — "new" meaning present in today's snapshot but not yesterday's, so a
 filter never re-fires on a lot it already told you about, and the first sync
 of a fresh deployment notifies nobody (there is no previous snapshot to diff
 against).
+
+Subscriptions live in Redis, not in Blob like the snapshot does. They are
+small records read back moments after they're written — the site creates one,
+the bot's `/start` looks it up — and Blob is CDN-fronted object storage that
+can answer such a read with an older copy, and whose `ifMatch` did not
+reliably stop two overlapping writers from overwriting each other. Both
+failures showed up in practice, as created subscriptions going missing and
+valid links reporting "invalid". The snapshot stays in Blob: one large file,
+written once a day by a single writer, read by everyone.
 
 Any Telegram user can subscribe: the site never asks for an account, a
 Telegram chat id **is** the identity. Build a filter on the board, click

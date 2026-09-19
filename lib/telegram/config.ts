@@ -1,5 +1,7 @@
 import "server-only";
 
+import { isSubscriptionStoreConfigured } from "./store";
+
 export function telegramBotToken(): string | null {
   return process.env.TELEGRAM_BOT_TOKEN ?? null;
 }
@@ -12,8 +14,14 @@ export function telegramWebhookSecret(): string | null {
   return process.env.TELEGRAM_WEBHOOK_SECRET ?? null;
 }
 
+/**
+ * Includes the store: without Redis a subscription can't be saved, so the
+ * subscribe button must not render and the notify step has nothing to read.
+ */
 export function isTelegramConfigured() {
-  return Boolean(telegramBotToken() && telegramBotUsername());
+  return Boolean(
+    telegramBotToken() && telegramBotUsername() && isSubscriptionStoreConfigured(),
+  );
 }
 
 /**

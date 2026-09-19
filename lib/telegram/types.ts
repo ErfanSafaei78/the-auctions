@@ -9,7 +9,3 @@ export interface TelegramSubscription {
   createdAt: string;
   lastNotifiedAt: string | null;
 }
-
-export interface TelegramSubscriptionStore {
-  subscriptions: TelegramSubscription[];
-}

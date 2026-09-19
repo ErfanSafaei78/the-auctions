@@ -1,154 +1,64 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { Redis } from "@upstash/redis";
 
 import type { AuctionFilters } from "@/lib/eauc/filters";
 
-import type { TelegramSubscription, TelegramSubscriptionStore } from "./types";
-
-export const SUBSCRIPTIONS_PATHNAME = "auctions/telegram-subscriptions.json";
-const LOCAL_PATH = ".cache/telegram-subscriptions.json";
-
-const EMPTY_STORE: TelegramSubscriptionStore = { subscriptions: [] };
-
-function hasBlobCredentials() {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
-}
-
-async function readLocal(): Promise<TelegramSubscriptionStore> {
-  try {
-    const { readFile } = await import("node:fs/promises");
-    const raw = await readFile(LOCAL_PATH, "utf8");
-    return {
-      ...EMPTY_STORE,
-      ...(JSON.parse(raw) as Partial<TelegramSubscriptionStore>),
-    };
-  } catch {
-    return EMPTY_STORE;
-  }
-}
-
-async function writeLocal(store: TelegramSubscriptionStore) {
-  const { mkdir, writeFile } = await import("node:fs/promises");
-  const { dirname } = await import("node:path");
-
-  await mkdir(dirname(LOCAL_PATH), { recursive: true });
-  await writeFile(LOCAL_PATH, JSON.stringify(store), "utf8");
-}
-
-interface StoreWithEtag {
-  store: TelegramSubscriptionStore;
-  /** undefined when the blob has never been written — nothing to match against yet. */
-  etag: string | undefined;
-}
+import type { TelegramSubscription } from "./types";
 
 /**
- * Throws on any failure except "never written yet" — used only by mutate().
- * A mutation must never treat a failed read as an empty store: EMPTY_STORE
- * plus an unconditional (no-etag) write would silently overwrite every
- * existing subscription with just the one this call is trying to add.
- *
- * Reads via get(..., { useCache: false }) rather than head() + a fetch of
- * the public CDN URL — the CDN path can lag behind a write that just
- * happened in a *different* invocation (no amount of cache-busting query
- * params helps if head()'s own metadata is what's stale), observed live as
- * a just-linked subscription reading back as never-linked a moment later.
- * useCache: false reads from origin storage instead, at the cost of a
- * slower read — an acceptable trade at this write volume.
+ * Redis, not Blob. Subscriptions are small records read back immediately
+ * after they're written — the site creates one and the bot's /start looks it
+ * up seconds later. Blob is CDN-fronted object storage: that read could
+ * return an older copy, and its ifMatch didn't reliably stop two overlapping
+ * writers from clobbering each other, so created subscriptions went missing
+ * and valid links reported "invalid". Every write here is a single atomic
+ * command, and a read after it sees it.
  */
-async function readStoreWithEtag(): Promise<StoreWithEtag> {
-  if (!hasBlobCredentials()) return { store: await readLocal(), etag: undefined };
-
-  const { get } = await import("@vercel/blob");
-
-  const result = await get(SUBSCRIPTIONS_PATHNAME, {
-    access: "public",
-    useCache: false,
-  });
-  if (!result) return { store: EMPTY_STORE, etag: undefined };
-  if (result.statusCode !== 200) {
-    throw new Error(
-      `Telegram subscriptions blob get returned ${result.statusCode}`,
-    );
-  }
-
-  const text = await new Response(result.stream).text();
-  const parsed = JSON.parse(text) as Partial<TelegramSubscriptionStore>;
-  return { store: { ...EMPTY_STORE, ...parsed }, etag: result.blob.etag };
-}
-
-/** Lenient, display-only read: degrades to "no subscriptions" on any error rather than throwing. */
-async function readStore(): Promise<TelegramSubscriptionStore> {
-  try {
-    return (await readStoreWithEtag()).store;
-  } catch (error) {
-    console.error("Telegram subscriptions blob read failed", error);
-    return EMPTY_STORE;
-  }
-}
-
-async function writeStore(store: TelegramSubscriptionStore, ifMatch: string | undefined) {
-  if (!hasBlobCredentials()) return writeLocal(store);
-
-  const { put } = await import("@vercel/blob");
-
-  await put(SUBSCRIPTIONS_PATHNAME, JSON.stringify(store), {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-    cacheControlMaxAge: 60,
-    // Compare-and-swap: only write if nobody else has written since we read.
-    // Without this, two overlapping read-modify-write cycles (e.g. the site
-    // creating a subscription and the bot linking a different one within
-    // the same second) can each read a valid-looking copy and the slower
-    // one's write silently discards the faster one's — observed live as a
-    // freshly linked subscription's chatId reverting to null.
-    ...(ifMatch ? { ifMatch } : {}),
-  });
-}
-
-/** Retries a few times when a concurrent writer won the race, then gives up loudly. */
-const MAX_MUTATE_ATTEMPTS = 5;
+const SUB_KEY = (id: string) => `telegram:sub:${id}`;
+const CHAT_KEY = (chatId: number) => `telegram:chat:${chatId}`;
+/** Every linked subscription, so notify can fan out without scanning keys. */
+const LINKED_KEY = "telegram:linked";
 
 /**
- * `changed` gates the write deliberately: a lookup that found nothing to do
- * must never write back the store it just read — that would be a no-op CAS
- * write at best, and at worst races a concurrent writer for no reason.
+ * A subscription that's created but never opened in Telegram is dead weight —
+ * the deep link is meant to be tapped within moments. Linking clears the TTL.
  */
-async function mutate<T>(
-  fn: (store: TelegramSubscriptionStore) => { result: T; changed: boolean },
-): Promise<T> {
-  const { BlobPreconditionFailedError } = await import("@vercel/blob");
+const PENDING_TTL_SECONDS = 24 * 60 * 60;
 
-  for (let attempt = 1; attempt <= MAX_MUTATE_ATTEMPTS; attempt += 1) {
-    const { store, etag } = await readStoreWithEtag();
-    const { result, changed } = fn(store);
-    if (!changed) return result;
-    if (!hasBlobCredentials()) {
-      await writeStore(store, undefined);
-      return result;
-    }
+let client: Redis | null = null;
 
-    try {
-      await writeStore(store, etag);
-      return result;
-    } catch (error) {
-      const isLastAttempt = attempt === MAX_MUTATE_ATTEMPTS;
-      if (error instanceof BlobPreconditionFailedError && !isLastAttempt) {
-        continue;
-      }
-      throw error;
+export function isSubscriptionStoreConfigured() {
+  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+}
+
+function redis(): Redis {
+  if (!client) {
+    if (!isSubscriptionStoreConfigured()) {
+      throw new Error("KV_REST_API_URL / KV_REST_API_TOKEN are not set");
     }
+    client = new Redis({
+      url: process.env.KV_REST_API_URL!,
+      token: process.env.KV_REST_API_TOKEN!,
+    });
   }
+  return client;
+}
 
-  // Unreachable — the loop above always returns or throws.
-  throw new Error("Telegram subscription store: exhausted retries");
+/** mget on an empty key list is an error, and drops entries that expired meanwhile. */
+async function readMany(ids: string[]): Promise<TelegramSubscription[]> {
+  if (ids.length === 0) return [];
+
+  const found = await redis().mget<(TelegramSubscription | null)[]>(
+    ...ids.map(SUB_KEY),
+  );
+  return found.filter((item): item is TelegramSubscription => item !== null);
 }
 
 export async function readSubscriptions(): Promise<TelegramSubscription[]> {
-  const store = await readStore();
-  return store.subscriptions;
+  const ids = await redis().smembers(LINKED_KEY);
+  return readMany(ids);
 }
 
 export async function createPendingSubscription(
@@ -164,10 +74,10 @@ export async function createPendingSubscription(
     lastNotifiedAt: null,
   };
 
-  return mutate((store) => {
-    store.subscriptions.push(subscription);
-    return { result: subscription, changed: true };
+  await redis().set(SUB_KEY(subscription.id), subscription, {
+    ex: PENDING_TTL_SECONDS,
   });
+  return subscription;
 }
 
 export type LinkResult =
@@ -179,20 +89,27 @@ export async function linkSubscription(
   id: string,
   chatId: number,
 ): Promise<LinkResult> {
-  return mutate<LinkResult>((store) => {
-    const subscription = store.subscriptions.find((item) => item.id === id);
-    if (!subscription) return { result: { status: "not_found" }, changed: false };
+  const subscription = await redis().get<TelegramSubscription>(SUB_KEY(id));
+  if (!subscription) return { status: "not_found" };
 
-    subscription.chatId = chatId;
-    return { result: { status: "linked", subscription }, changed: true };
-  });
+  const linked: TelegramSubscription = { ...subscription, chatId };
+
+  // set without `ex` drops the pending TTL: this one is now permanent.
+  await redis()
+    .pipeline()
+    .set(SUB_KEY(id), linked)
+    .sadd(CHAT_KEY(chatId), id)
+    .sadd(LINKED_KEY, id)
+    .exec();
+
+  return { status: "linked", subscription: linked };
 }
 
 export async function listSubscriptionsForChat(
   chatId: number,
 ): Promise<TelegramSubscription[]> {
-  const store = await readStore();
-  return store.subscriptions.filter((item) => item.chatId === chatId);
+  const ids = await redis().smembers(CHAT_KEY(chatId));
+  return readMany(ids);
 }
 
 /** chatId is required so a chat can only ever delete its own subscriptions. */
@@ -200,32 +117,33 @@ export async function deleteSubscription(
   id: string,
   chatId: number,
 ): Promise<boolean> {
-  return mutate((store) => {
-    const index = store.subscriptions.findIndex(
-      (item) => item.id === id && item.chatId === chatId,
-    );
-    if (index === -1) return { result: false, changed: false };
+  const subscription = await redis().get<TelegramSubscription>(SUB_KEY(id));
+  if (!subscription || subscription.chatId !== chatId) return false;
 
-    store.subscriptions.splice(index, 1);
-    return { result: true, changed: true };
-  });
+  await redis()
+    .pipeline()
+    .del(SUB_KEY(id))
+    .srem(CHAT_KEY(chatId), id)
+    .srem(LINKED_KEY, id)
+    .exec();
+
+  return true;
 }
 
-export async function markNotified(
-  ids: string[],
-  when: string,
-): Promise<void> {
-  if (ids.length === 0) return;
+/**
+ * Only ever called by the sync that just sent the messages — a lost update
+ * here would at worst re-send one notification, so it needs no locking.
+ */
+export async function markNotified(ids: string[], when: string): Promise<void> {
+  const subscriptions = await readMany(ids);
+  if (subscriptions.length === 0) return;
 
-  const idSet = new Set(ids);
-  await mutate((store) => {
-    let changed = false;
-    for (const subscription of store.subscriptions) {
-      if (idSet.has(subscription.id)) {
-        subscription.lastNotifiedAt = when;
-        changed = true;
-      }
-    }
-    return { result: undefined, changed };
-  });
+  const pipeline = redis().pipeline();
+  for (const subscription of subscriptions) {
+    pipeline.set(SUB_KEY(subscription.id), {
+      ...subscription,
+      lastNotifiedAt: when,
+    });
+  }
+  await pipeline.exec();
 }
