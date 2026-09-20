@@ -27,7 +27,8 @@ export function ToggleGroup<T extends string>({
       <div
         role="group"
         aria-label={label}
-        className="flex h-9 items-center gap-1 rounded-md border border-line bg-surface p-1"
+        // Wraps instead of overflowing when the labels outgrow the column.
+        className="flex min-h-9 flex-wrap items-center gap-1 rounded-md border border-line bg-surface p-1"
       >
         {options.map((option) => {
           const active = option.value === value;
@@ -39,7 +40,7 @@ export function ToggleGroup<T extends string>({
               aria-pressed={active}
               onClick={() => onValueChange(option.value)}
               className={cn(
-                "flex-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors duration-150 ease-out",
+                "flex-auto whitespace-nowrap rounded-sm px-2 py-1 text-xs font-medium transition-colors duration-150 ease-out",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                 active
                   ? "bg-accent-soft text-accent"

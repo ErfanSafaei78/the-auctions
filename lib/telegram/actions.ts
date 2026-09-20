@@ -19,8 +19,15 @@ export async function createTelegramSubscriptionAction(
 ): Promise<CreateSubscriptionResult> {
   if (!isTelegramConfigured()) return { status: "unavailable" };
 
-  const label = summarizeFilters(filters);
-  const subscription = await createPendingSubscription(filters, label);
+  // `since` is dropped: a subscription only ever reports lots that are new, so
+  // storing a first-seen window would either say nothing (a relative keyword
+  // that always matches) or, with a literal date, silently narrow every future
+  // notification against a date the subscriber picked once. It belongs in the
+  // link a notification carries, not in what the subscription matches on.
+  const matchOn: AuctionFilters = { ...filters, since: "" };
+
+  const label = summarizeFilters(matchOn);
+  const subscription = await createPendingSubscription(matchOn, label);
   const username = telegramBotUsername();
 
   return {

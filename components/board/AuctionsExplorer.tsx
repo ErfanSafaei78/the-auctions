@@ -8,10 +8,11 @@ import {
   buildAuctionQuery,
   DEFAULT_PER_PAGE,
   EMPTY_FILTERS,
+  isSinceKeyword,
   parseAuctionFilters,
   parsePagination,
   type AuctionFilters,
-  type DeadlineWindow,
+  type FilterWindow,
 } from "@/lib/eauc/filters";
 import type { AuctionSnapshot } from "@/lib/eauc/types";
 import { formatCount } from "@/lib/format/number";
@@ -26,7 +27,7 @@ interface AuctionsExplorerProps {
   initialFilters: AuctionFilters;
   initialPage: number;
   initialPerPage: number;
-  deadlineWindow: DeadlineWindow;
+  filterWindow: FilterWindow;
   telegramEnabled: boolean;
 }
 
@@ -38,7 +39,7 @@ export function AuctionsExplorer({
   initialFilters,
   initialPage,
   initialPerPage,
-  deadlineWindow,
+  filterWindow,
   telegramEnabled,
 }: AuctionsExplorerProps) {
   const router = useRouter();
@@ -55,8 +56,8 @@ export function AuctionsExplorer({
   const resultsRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(
-    () => applyAuctionFilters(snapshot.records, filters, deadlineWindow),
-    [snapshot.records, filters, deadlineWindow],
+    () => applyAuctionFilters(snapshot.records, filters, filterWindow),
+    [snapshot.records, filters, filterWindow],
   );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
@@ -134,7 +135,9 @@ export function AuctionsExplorer({
       "auctionNo" in next ||
       "lotNo" in next ||
       "deadlineFrom" in next ||
-      "deadlineTo" in next;
+      "deadlineTo" in next ||
+      // A typed custom date, which must not push a history entry per keystroke.
+      ("since" in next && !isSinceKeyword(next.since ?? ""));
 
     historyModeRef.current = isTextEdit ? "replace" : "push";
     setFilters((current) => ({ ...current, ...next }));

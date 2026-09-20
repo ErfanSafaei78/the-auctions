@@ -133,13 +133,62 @@ function buildFacets(records: AuctionRecord[]): SnapshotFacets {
   };
 }
 
+interface FirstSeen {
+  firstSeenAt: string;
+  firstSeenAtJalali: string;
+}
+
+/**
+ * The previous snapshot's first-seen stamps, by partyId.
+ *
+ * Records written before the field existed are backfilled with the snapshot
+ * they were carried in, which is necessarily in the past. Defaulting them to
+ * *now* instead would make all ~1000 of them look new on the first sync after
+ * deploy, and flood every subscriber at once.
+ */
+function previousFirstSeen(
+  previous: AuctionSnapshot | null | undefined,
+): Map<string, FirstSeen> {
+  const stamps = new Map<string, FirstSeen>();
+  if (!previous) return stamps;
+
+  const fallbackAt = previous.fetchedAt;
+  const fallbackJalali = previous.fetchedAtJalali;
+
+  for (const record of previous.records) {
+    stamps.set(record.partyId, {
+      firstSeenAt: record.firstSeenAt ?? fallbackAt,
+      firstSeenAtJalali: record.firstSeenAtJalali ?? fallbackJalali,
+    });
+  }
+
+  return stamps;
+}
+
+/**
+ * `previous` is what makes a lot's first-seen stamp stable: without it every
+ * record is stamped with this run, so a caller that has the prior snapshot
+ * must pass it. Omitting it is only right for a throwaway build (the probe
+ * route), never for a snapshot that gets written.
+ */
 export function buildSnapshot(
   raw: RawListResponse,
   fetchedAt: Date,
+  previous?: AuctionSnapshot | null,
 ): AuctionSnapshot {
+  const seenBefore = previousFirstSeen(previous);
+  const firstSeen: FirstSeen = {
+    firstSeenAt: fetchedAt.toISOString(),
+    firstSeenAtJalali: getJalaliStamp(fetchedAt),
+  };
+
   const records = raw.gridModel
     .map((row, index) => normalizeListRow(row, index))
-    .filter((record): record is AuctionRecord => record !== null);
+    .filter((record): record is AuctionRecord => record !== null)
+    .map((record) => ({
+      ...record,
+      ...(seenBefore.get(record.partyId) ?? firstSeen),
+    }));
 
   return {
     version: 1,

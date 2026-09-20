@@ -54,18 +54,34 @@ export function jalaliSortKey(raw: string | null) {
   return `${parts.year}${parts.month}${parts.day}${parts.hour ?? "00"}${parts.minute ?? "00"}`;
 }
 
-/** Normalizes user input like "1405/7/5" or "۱۴۰۵/۰۷/۰۵" to "14050705". */
+/**
+ * Normalizes user input like "1405/7/5" or "۱۴۰۵/۰۷/۰۵" to "140507050000".
+ *
+ * An optional clock time is accepted too ("1405/07/05 12:00"), which is what
+ * lets a first-seen filter separate two syncs on the same day. Without one the
+ * key falls back to the start of that day, or its end for a range's upper
+ * bound — so a bare date still means the whole day, as the deadline filters
+ * have always read it.
+ */
 export function jalaliInputToSortKey(input: string, endOfDay = false) {
   const latin = toLatinDigits(input);
 
-  const match = /^(\d{4})\D+(\d{1,2})\D+(\d{1,2})$/.exec(latin.trim());
+  const match = /^(\d{4})\D+(\d{1,2})\D+(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?$/.exec(
+    latin.trim(),
+  );
   if (!match) return null;
 
   const year = match[1];
   const month = match[2].padStart(2, "0");
   const day = match[3].padStart(2, "0");
+  const time =
+    match[4] !== undefined
+      ? `${match[4].padStart(2, "0")}${match[5]}`
+      : endOfDay
+        ? "2359"
+        : "0000";
 
-  return `${year}${month}${day}${endOfDay ? "2359" : "0000"}`;
+  return `${year}${month}${day}${time}`;
 }
 
 function jalaliPartsFor(date: Date) {
