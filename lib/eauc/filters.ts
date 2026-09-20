@@ -18,14 +18,14 @@ export type TriState = "any" | "yes" | "no";
  * Relative shorthands for the "new since" filter, each an offset in days back
  * from today. Every one is open-ended towards now — "yesterday" means *since*
  * yesterday, not yesterday alone, because the whole point is catching up on
- * days you did not look. The counts are inclusive of today, so "3d" is three
- * calendar days: today and the two before it.
+ * days you did not look. The offsets read as the labels do: "3d" is "since
+ * three days ago", the start of the day three days before today.
  */
 export const SINCE_OFFSET_DAYS = {
   today: 0,
   yesterday: -1,
-  "3d": -2,
-  "7d": -6,
+  "3d": -3,
+  "7d": -7,
 } as const;
 
 export type SinceKeyword = keyof typeof SINCE_OFFSET_DAYS;
@@ -192,8 +192,8 @@ export function describeSince(since: string): string {
   const labels: Record<SinceKeyword, string> = {
     today: "امروز",
     yesterday: "دیروز",
-    "3d": "۳ روز اخیر",
-    "7d": "۷ روز اخیر",
+    "3d": "۳ روز پیش",
+    "7d": "یک هفته پیش",
   };
 
   if (isSinceKeyword(since)) return labels[since];

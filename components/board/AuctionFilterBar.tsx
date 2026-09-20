@@ -352,11 +352,11 @@ export function AuctionFilterBar({
             }}
             options={[
               { value: "all", label: "همه" },
-              { value: "today", label: "امروز" },
-              { value: "yesterday", label: "دیروز" },
-              { value: "3d", label: "۳ روز" },
-              { value: "7d", label: "۷ روز" },
-              { value: "custom", label: "تاریخ" },
+              { value: "today", label: "از امروز" },
+              { value: "yesterday", label: "از دیروز" },
+              { value: "3d", label: "از ۳ روز پیش" },
+              { value: "7d", label: "از یک هفته پیش" },
+              { value: "custom", label: "از تاریخ" },
             ]}
           />
 
