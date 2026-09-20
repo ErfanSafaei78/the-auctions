@@ -1,4 +1,4 @@
-import { getJalaliDateFor, getJalaliStamp } from "@/lib/format/jalali";
+import { getJalaliStamp } from "@/lib/format/jalali";
 
 import { SETADIRAN_ROWS_PER_PAGE } from "./constants";
 import type { RawListResponse } from "./list";
@@ -153,7 +153,7 @@ function previousFirstSeen(
   if (!previous) return stamps;
 
   const fallbackAt = previous.fetchedAt;
-  const fallbackJalali = getJalaliDateFor(new Date(previous.fetchedAt));
+  const fallbackJalali = previous.fetchedAtJalali;
 
   for (const record of previous.records) {
     stamps.set(record.partyId, {
@@ -179,7 +179,7 @@ export function buildSnapshot(
   const seenBefore = previousFirstSeen(previous);
   const firstSeen: FirstSeen = {
     firstSeenAt: fetchedAt.toISOString(),
-    firstSeenAtJalali: getJalaliDateFor(fetchedAt),
+    firstSeenAtJalali: getJalaliStamp(fetchedAt),
   };
 
   const records = raw.gridModel

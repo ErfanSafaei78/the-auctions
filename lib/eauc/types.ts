@@ -32,15 +32,17 @@ export interface AuctionRecord {
    * copied forward unchanged by every later sync. Not "last synced": that
    * would be `snapshot.fetchedAt`, identical for every record here.
    *
-   * ISO-8601 UTC, like `fetchedAt`, plus the Tehran-local Jalali *date*
+   * ISO-8601 UTC, like `fetchedAt`, plus the Tehran-local Jalali stamp
    * precomputed beside it so the "new since" filter stays a fixed-width
-   * string comparison and never needs a Gregorian round-trip.
+   * string comparison and never needs a Gregorian round-trip. The stamp
+   * carries the clock time, so two syncs on one day stay distinguishable and
+   * each notification can link to exactly its own lots.
    *
    * Optional: snapshots written before this field existed have neither, and
    * such a record reads as old rather than crashing the filter.
    */
   firstSeenAt?: string;
-  /** "1405/06/29" — Tehran-local Jalali date of `firstSeenAt`. */
+  /** "1405/06/29 12:00" — Tehran-local Jalali stamp of `firstSeenAt`. */
   firstSeenAtJalali?: string;
   /** 1-based position in the upstream snapshot. Frozen at normalize time. */
   snapshotRow: number;

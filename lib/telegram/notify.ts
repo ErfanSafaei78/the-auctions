@@ -7,7 +7,6 @@ import {
 } from "@/lib/eauc/filters";
 import type { AuctionRecord, AuctionSnapshot } from "@/lib/eauc/types";
 import { toPersianDigits } from "@/lib/format/digits";
-import { getJalaliDateFor } from "@/lib/format/jalali";
 
 import { escapeHtml, sendTelegramMessage } from "./bot";
 import { isTelegramConfigured } from "./config";
@@ -85,8 +84,10 @@ export async function notifyNewAuctions(
   if (linked.length === 0) return;
 
   const window = buildFilterWindow();
-  // Every record new in this sync carries this stamp — see buildSnapshot.
-  const sinceDate = getJalaliDateFor(new Date(next.fetchedAt));
+  // Every record new in this sync carries exactly this stamp — see
+  // buildSnapshot — so a link pinned to it resolves to these lots and no
+  // others, even if another sync runs later the same day.
+  const sinceDate = next.fetchedAtJalali;
   const notifiedIds: string[] = [];
 
   const results = await Promise.allSettled(
