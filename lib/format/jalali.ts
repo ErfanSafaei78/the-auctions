@@ -99,7 +99,16 @@ export function getJalaliDateInDays(offsetDays: number) {
  * deterministic and hydration-safe.
  */
 export function getTodayJalali() {
-  return jalaliPartsFor(new Date());
+  return getJalaliDateFor(new Date());
+}
+
+/**
+ * The Tehran-local Jalali *date* for an instant, with no time — the form a
+ * record is stamped with and that the date filters compare against.
+ * getJalaliStamp is the same instant with the clock time kept.
+ */
+export function getJalaliDateFor(date: Date) {
+  return jalaliPartsFor(date);
 }
 
 function jalaliStampFor(date: Date) {

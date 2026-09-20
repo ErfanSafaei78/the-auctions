@@ -1,9 +1,13 @@
 import "server-only";
 
-import { applyAuctionFilters, type AuctionFilters } from "@/lib/eauc/filters";
+import {
+  applyAuctionFilters,
+  buildFilterWindow,
+  type AuctionFilters,
+} from "@/lib/eauc/filters";
 import type { AuctionRecord, AuctionSnapshot } from "@/lib/eauc/types";
 import { toPersianDigits } from "@/lib/format/digits";
-import { getJalaliDateInDays, getTodayJalali } from "@/lib/format/jalali";
+import { getJalaliDateFor } from "@/lib/format/jalali";
 
 import { escapeHtml, sendTelegramMessage } from "./bot";
 import { isTelegramConfigured } from "./config";
@@ -32,8 +36,13 @@ function buildMessage(
   label: string,
   matches: AuctionRecord[],
   filters: AuctionFilters,
+  since: string,
 ) {
-  const link = boardUrl(filters);
+  // The lots below were stamped with this sync's date, so pinning the link to
+  // it is what keeps an old message honest: opened days later it still lists
+  // what it announced, plus anything new since — which is the whole point of
+  // tapping yesterday's message. A relative "today" would instead go empty.
+  const link = boardUrl({ ...filters, since });
 
   const titles = matches
     .slice(0, MAX_TITLES_IN_MESSAGE)
@@ -48,7 +57,9 @@ function buildMessage(
   return (
     `<b>${toPersianDigits(String(matches.length))} پارتی جدید</b> مطابق «${escapeHtml(label)}»\n\n` +
     `${titles}${more}` +
-    (link ? `\n\n<a href="${link}">مشاهده در تابلو</a>` : "")
+    (link
+      ? `\n\n<a href="${link}">مشاهده همه ${toPersianDigits(String(matches.length))} مورد در تابلو</a>`
+      : "")
   );
 }
 
@@ -73,7 +84,9 @@ export async function notifyNewAuctions(
   );
   if (linked.length === 0) return;
 
-  const window = { today: getTodayJalali(), inSevenDays: getJalaliDateInDays(7) };
+  const window = buildFilterWindow();
+  // Every record new in this sync carries this stamp — see buildSnapshot.
+  const sinceDate = getJalaliDateFor(new Date(next.fetchedAt));
   const notifiedIds: string[] = [];
 
   const results = await Promise.allSettled(
@@ -83,7 +96,12 @@ export async function notifyNewAuctions(
 
       await sendTelegramMessage(
         subscription.chatId,
-        buildMessage(subscription.label, matches, subscription.filters),
+        buildMessage(
+          subscription.label,
+          matches,
+          subscription.filters,
+          sinceDate,
+        ),
       );
       notifiedIds.push(subscription.id);
     }),

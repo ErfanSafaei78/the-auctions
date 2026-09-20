@@ -1,5 +1,10 @@
-import { toLatinDigits } from "@/lib/format/digits";
-import { jalaliInputToSortKey, jalaliSortKey } from "@/lib/format/jalali";
+import { toLatinDigits, toPersianDigits } from "@/lib/format/digits";
+import {
+  getJalaliDateInDays,
+  getTodayJalali,
+  jalaliInputToSortKey,
+  jalaliSortKey,
+} from "@/lib/format/jalali";
 
 import type { AuctionRecord } from "./types";
 
@@ -8,6 +13,28 @@ export const NO_GROUP = "__none__";
 
 export type DeadlinePreset = "all" | "open" | "soon";
 export type TriState = "any" | "yes" | "no";
+
+/**
+ * Relative shorthands for the "new since" filter, each an offset in days back
+ * from today. Every one is open-ended towards now — "yesterday" means *since*
+ * yesterday, not yesterday alone, because the whole point is catching up on
+ * days you did not look. The counts are inclusive of today, so "3d" is three
+ * calendar days: today and the two before it.
+ */
+export const SINCE_OFFSET_DAYS = {
+  today: 0,
+  yesterday: -1,
+  "3d": -2,
+  "7d": -6,
+} as const;
+
+export type SinceKeyword = keyof typeof SINCE_OFFSET_DAYS;
+
+const SINCE_KEYWORDS = Object.keys(SINCE_OFFSET_DAYS) as SinceKeyword[];
+
+export function isSinceKeyword(value: string): value is SinceKeyword {
+  return (SINCE_KEYWORDS as string[]).includes(value);
+}
 
 export interface AuctionFilters {
   auctionNo: string;
@@ -19,6 +46,13 @@ export interface AuctionFilters {
   deadlinePreset: DeadlinePreset;
   deadlineFrom: string;
   deadlineTo: string;
+  /**
+   * Lots first seen on or after this date. Either a SinceKeyword, which stays
+   * relative so a bookmarked filter keeps meaning what it says, or a literal
+   * Jalali date, which stays fixed so a Telegram message sent days ago still
+   * opens the list it announced. Empty means no first-seen filtering.
+   */
+  since: string;
 }
 
 export const EMPTY_FILTERS: AuctionFilters = {
@@ -31,6 +65,7 @@ export const EMPTY_FILTERS: AuctionFilters = {
   deadlinePreset: "all",
   deadlineFrom: "",
   deadlineTo: "",
+  since: "",
 };
 
 export const PER_PAGE_OPTIONS = [30, 50, 100] as const;
@@ -69,6 +104,7 @@ export function parseAuctionFilters(params: SearchParams): AuctionFilters {
     deadlinePreset: asPreset(one(params, "deadline")),
     deadlineFrom: one(params, "from").trim(),
     deadlineTo: one(params, "to").trim(),
+    since: one(params, "since").trim(),
   };
 }
 
@@ -102,6 +138,7 @@ export function buildAuctionQuery(
   if (filters.deadlinePreset !== "all") params.set("deadline", filters.deadlinePreset);
   if (filters.deadlineFrom) params.set("from", filters.deadlineFrom);
   if (filters.deadlineTo) params.set("to", filters.deadlineTo);
+  if (filters.since) params.set("since", filters.since);
   if (page > 1) params.set("page", String(page));
   if (perPage !== DEFAULT_PER_PAGE) params.set("perPage", String(perPage));
 
@@ -119,6 +156,7 @@ export function countActiveFilters(filters: AuctionFilters) {
   if (filters.hasReservePrice !== "any") count += 1;
   if (filters.deadlinePreset !== "all") count += 1;
   if (filters.deadlineFrom || filters.deadlineTo) count += 1;
+  if (filters.since) count += 1;
 
   return count;
 }
@@ -140,23 +178,61 @@ export function summarizeFilters(filters: AuctionFilters): string {
   if (filters.deadlineFrom || filters.deadlineTo) {
     parts.push(`مهلت ${filters.deadlineFrom || "…"} تا ${filters.deadlineTo || "…"}`);
   }
+  if (filters.since) parts.push(`جدید از ${describeSince(filters.since)}`);
   if (filters.auctionNo) parts.push(`مزایده ${filters.auctionNo}`);
   if (filters.lotNo) parts.push(`پارتی ${filters.lotNo}`);
 
   return parts.length > 0 ? parts.join(" · ") : "همه پارتی‌ها";
 }
 
-export interface DeadlineWindow {
+/** Persian label for a `since` value, keyword or literal date. */
+export function describeSince(since: string): string {
+  if (!since) return "";
+
+  const labels: Record<SinceKeyword, string> = {
+    today: "امروز",
+    yesterday: "دیروز",
+    "3d": "۳ روز اخیر",
+    "7d": "۷ روز اخیر",
+  };
+
+  return isSinceKeyword(since) ? labels[since] : toPersianDigits(since);
+}
+
+/**
+ * Every "now"-relative date the filters need, resolved once per request.
+ *
+ * Computed on the server and passed down rather than read from the clock
+ * during filtering: the same records must filter identically on the server
+ * and on the client, or the first render after hydration would disagree with
+ * the HTML it replaced.
+ */
+export interface FilterWindow {
   /** Jalali "YYYY/MM/DD" for today in Tehran. */
   today: string;
   /** Jalali "YYYY/MM/DD" seven days out. */
   inSevenDays: string;
+  /** The Jalali date each `since` keyword stands for. */
+  since: Record<SinceKeyword, string>;
+}
+
+export function buildFilterWindow(): FilterWindow {
+  const since = {} as Record<SinceKeyword, string>;
+  for (const keyword of SINCE_KEYWORDS) {
+    since[keyword] = getJalaliDateInDays(SINCE_OFFSET_DAYS[keyword]);
+  }
+
+  return {
+    today: getTodayJalali(),
+    inSevenDays: getJalaliDateInDays(7),
+    since,
+  };
 }
 
 export function applyAuctionFilters(
   records: AuctionRecord[],
   filters: AuctionFilters,
-  window: DeadlineWindow,
+  window: FilterWindow,
 ): AuctionRecord[] {
   // Upstream ids are ASCII digits; typed input may be Persian/Arabic-Indic
   // digits (fa locale), so both sides need to agree before comparing.
@@ -174,6 +250,17 @@ export function applyAuctionFilters(
     : null;
   const toKey = filters.deadlineTo
     ? jalaliInputToSortKey(filters.deadlineTo, true)
+    : null;
+
+  // A keyword resolves through the window; anything else is read as a literal
+  // Jalali date. An unparseable value yields null and filters nothing, so a
+  // mangled ?since= shows the whole board rather than an empty one.
+  const sinceKey = filters.since
+    ? jalaliInputToSortKey(
+        isSinceKeyword(filters.since)
+          ? window.since[filters.since]
+          : filters.since,
+      )
     : null;
 
   return records.filter((record) => {
@@ -212,6 +299,12 @@ export function applyAuctionFilters(
 
     if (fromKey && (!closesAt || closesAt < fromKey)) return false;
     if (toKey && (!closesAt || closesAt > toKey)) return false;
+
+    if (sinceKey) {
+      // Unstamped records predate the field, so they are old by definition.
+      const firstSeen = jalaliSortKey(record.firstSeenAtJalali ?? null);
+      if (!firstSeen || firstSeen < sinceKey) return false;
+    }
 
     return true;
   });

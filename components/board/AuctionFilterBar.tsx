@@ -10,6 +10,8 @@ import { TextField } from "@/components/ui/TextField";
 import { ToggleGroup } from "@/components/ui/ToggleGroup";
 import {
   countActiveFilters,
+  describeSince,
+  isSinceKeyword,
   NO_GROUP,
   type AuctionFilters,
   type DeadlinePreset,
@@ -44,6 +46,20 @@ export function AuctionFilterBar({
   // chips below stay visible either way, so collapsing never hides *what*
   // is filtered, only the controls.
   const [open, setOpen] = useState(true);
+
+  // "custom" is a UI mode, not a stored value — the filter itself is just a
+  // string. Kept in state so choosing "تاریخ دلخواه" leaves the input on
+  // screen while it is still empty and nothing is filtered yet.
+  const [customSince, setCustomSince] = useState(
+    () => Boolean(filters.since) && !isSinceKeyword(filters.since),
+  );
+
+  const sinceMode =
+    filters.since && isSinceKeyword(filters.since)
+      ? filters.since
+      : customSince || filters.since
+        ? "custom"
+        : "all";
 
   const groupOptions = useMemo(
     () => [
@@ -146,6 +162,16 @@ export function AuctionFilterBar({
       onRemove: () => onChange({ deadlinePreset: "all" }),
     });
   }
+  if (filters.since) {
+    chips.push({
+      key: "since",
+      label: `جدید از ${describeSince(filters.since)}`,
+      onRemove: () => {
+        setCustomSince(false);
+        onChange({ since: "" });
+      },
+    });
+  }
   if (filters.deadlineFrom || filters.deadlineTo) {
     const range = [
       filters.deadlineFrom ? `از ${filters.deadlineFrom}` : "",
@@ -185,7 +211,15 @@ export function AuctionFilterBar({
         <div className="flex items-center gap-1">
           {telegramEnabled ? <TelegramSubscribeButton filters={filters} /> : null}
           {activeCount > 0 ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setCustomSince(false);
+                onClear();
+              }}
+            >
               پاک کردن همه
             </Button>
           ) : null}
@@ -282,6 +316,33 @@ export function AuctionFilterBar({
               { value: "soon", label: "تا ۷ روز" },
             ]}
           />
+
+          <ToggleGroup<typeof sinceMode>
+            label="تازه‌ها"
+            value={sinceMode}
+            onValueChange={(value) => {
+              setCustomSince(value === "custom");
+              onChange({ since: value === "all" || value === "custom" ? "" : value });
+            }}
+            options={[
+              { value: "all", label: "همه" },
+              { value: "today", label: "امروز" },
+              { value: "yesterday", label: "دیروز" },
+              { value: "3d", label: "۳ روز" },
+              { value: "7d", label: "۷ روز" },
+              { value: "custom", label: "تاریخ" },
+            ]}
+          />
+
+          {sinceMode === "custom" ? (
+            <TextField
+              label="جدید از تاریخ"
+              placeholder="۱۴۰۵/۰۶/۲۹"
+              value={filters.since}
+              onValueChange={(value) => onChange({ since: value })}
+              inputMode="numeric"
+            />
+          ) : null}
 
           <div className="grid grid-cols-2 gap-2">
             <TextField

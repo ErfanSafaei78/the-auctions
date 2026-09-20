@@ -27,6 +27,21 @@ export interface AuctionRecord {
   lastInfoModified: string | null;
   lastDocModified: string | null;
   state: string | null;
+  /**
+   * When this lot first appeared in any snapshot of ours — set once, then
+   * copied forward unchanged by every later sync. Not "last synced": that
+   * would be `snapshot.fetchedAt`, identical for every record here.
+   *
+   * ISO-8601 UTC, like `fetchedAt`, plus the Tehran-local Jalali *date*
+   * precomputed beside it so the "new since" filter stays a fixed-width
+   * string comparison and never needs a Gregorian round-trip.
+   *
+   * Optional: snapshots written before this field existed have neither, and
+   * such a record reads as old rather than crashing the filter.
+   */
+  firstSeenAt?: string;
+  /** "1405/06/29" — Tehran-local Jalali date of `firstSeenAt`. */
+  firstSeenAtJalali?: string;
   /** 1-based position in the upstream snapshot. Frozen at normalize time. */
   snapshotRow: number;
   /** Which setadiran page (30 rows each) this lot appears on. Frozen. */

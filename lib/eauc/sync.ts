@@ -92,7 +92,7 @@ export async function commitSnapshot(
 ): Promise<SyncOutcome> {
   try {
     const previous = await readSnapshot();
-    const next = buildSnapshot(raw, new Date());
+    const next = buildSnapshot(raw, new Date(), previous);
 
     const failure = validateSnapshot(next, previous);
     if (failure) {
