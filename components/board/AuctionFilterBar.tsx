@@ -10,6 +10,8 @@ import { TextField } from "@/components/ui/TextField";
 import { ToggleGroup } from "@/components/ui/ToggleGroup";
 import {
   countActiveFilters,
+  describeSince,
+  isSinceKeyword,
   NO_GROUP,
   type AuctionFilters,
   type DeadlinePreset,
@@ -30,6 +32,13 @@ interface AuctionFilterBarProps {
   telegramEnabled: boolean;
 }
 
+/** Date and optional time back into the single `since` value. */
+function joinSince(date: string, time: string) {
+  const day = date.trim();
+  const clock = time.trim();
+  return day && clock ? `${day} ${clock}` : day;
+}
+
 export function AuctionFilterBar({
   filters,
   facets,
@@ -44,6 +53,23 @@ export function AuctionFilterBar({
   // chips below stay visible either way, so collapsing never hides *what*
   // is filtered, only the controls.
   const [open, setOpen] = useState(true);
+
+  // "custom" is a UI mode, not a stored value — the filter itself is just a
+  // string. Kept in state so choosing "تاریخ دلخواه" leaves the input on
+  // screen while it is still empty and nothing is filtered yet.
+  const [customSince, setCustomSince] = useState(
+    () => Boolean(filters.since) && !isSinceKeyword(filters.since),
+  );
+
+  const sinceMode =
+    filters.since && isSinceKeyword(filters.since)
+      ? filters.since
+      : customSince || filters.since
+        ? "custom"
+        : "all";
+
+  // The one `since` string is edited as two fields; the time is optional.
+  const [sinceDate = "", sinceTime = ""] = filters.since.trim().split(/\s+/);
 
   const groupOptions = useMemo(
     () => [
@@ -146,6 +172,16 @@ export function AuctionFilterBar({
       onRemove: () => onChange({ deadlinePreset: "all" }),
     });
   }
+  if (filters.since) {
+    chips.push({
+      key: "since",
+      label: `جدید از ${describeSince(filters.since)}`,
+      onRemove: () => {
+        setCustomSince(false);
+        onChange({ since: "" });
+      },
+    });
+  }
   if (filters.deadlineFrom || filters.deadlineTo) {
     const range = [
       filters.deadlineFrom ? `از ${filters.deadlineFrom}` : "",
@@ -185,7 +221,15 @@ export function AuctionFilterBar({
         <div className="flex items-center gap-1">
           {telegramEnabled ? <TelegramSubscribeButton filters={filters} /> : null}
           {activeCount > 0 ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setCustomSince(false);
+                onClear();
+              }}
+            >
               پاک کردن همه
             </Button>
           ) : null}
@@ -299,6 +343,52 @@ export function AuctionFilterBar({
               inputMode="numeric"
             />
           </div>
+          <ToggleGroup<typeof sinceMode>
+            label="تازه‌ها"
+            value={sinceMode}
+            onValueChange={(value) => {
+              setCustomSince(value === "custom");
+              onChange({ since: value === "all" || value === "custom" ? "" : value });
+            }}
+            options={[
+              { value: "all", label: "همه" },
+              { value: "today", label: "از امروز" },
+              { value: "yesterday", label: "از دیروز" },
+              { value: "3d", label: "از ۳ روز پیش" },
+              { value: "7d", label: "از یک هفته پیش" },
+              { value: "custom", label: "از تاریخ" },
+            ]}
+          />
+
+          {sinceMode === "custom" ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="grid grid-cols-2 gap-2">
+                <TextField
+                  label="جدید از تاریخ"
+                  placeholder="۱۴۰۵/۰۶/۲۹"
+                  value={sinceDate}
+                  onValueChange={(value) =>
+                    onChange({ since: joinSince(value, sinceTime) })
+                  }
+                  inputMode="numeric"
+                />
+                <TextField
+                  label="ساعت (اختیاری)"
+                  placeholder="۱۴:۳۰"
+                  value={sinceTime}
+                  disabled={!sinceDate}
+                  onValueChange={(value) =>
+                    onChange({ since: joinSince(sinceDate, value) })
+                  }
+                  inputMode="numeric"
+                />
+              </div>
+              {sinceDate && !sinceTime ? (
+                <p className="text-xs text-subtle">از ساعت ۰۰:۰۰ همان روز</p>
+              ) : null}
+            </div>
+          ) : null}
+
         </div>
       ) : null}
 

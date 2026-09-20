@@ -2,9 +2,12 @@ import { AuctionsExplorer } from "@/components/board/AuctionsExplorer";
 import { SnapshotMeta } from "@/components/board/SnapshotMeta";
 import { SyncButton } from "@/components/board/SyncButton";
 import { isDirectFetchEnabled } from "@/lib/eauc/direct-fetch";
-import { parseAuctionFilters, parsePagination } from "@/lib/eauc/filters";
+import {
+  buildFilterWindow,
+  parseAuctionFilters,
+  parsePagination,
+} from "@/lib/eauc/filters";
 import { readSnapshot } from "@/lib/eauc/snapshot-store";
-import { getJalaliDateInDays, getTodayJalali } from "@/lib/format/jalali";
 import { isTelegramConfigured } from "@/lib/telegram/config";
 
 /**
@@ -33,12 +36,9 @@ export default async function BoardPage({ searchParams }: BoardPageProps) {
   const filters = parseAuctionFilters(params);
   const { page, perPage } = parsePagination(params);
 
-  // Computed server-side and handed down, so deadline filtering is
-  // deterministic and cannot drift between the server and client render.
-  const deadlineWindow = {
-    today: getTodayJalali(),
-    inSevenDays: getJalaliDateInDays(7),
-  };
+  // Computed server-side and handed down, so date filtering is deterministic
+  // and cannot drift between the server and client render.
+  const filterWindow = buildFilterWindow();
 
   const isStale = snapshot
     ? Date.now() - Date.parse(snapshot.fetchedAt) > STALE_AFTER_MS
@@ -77,7 +77,7 @@ export default async function BoardPage({ searchParams }: BoardPageProps) {
             initialFilters={filters}
             initialPage={page}
             initialPerPage={perPage}
-            deadlineWindow={deadlineWindow}
+            filterWindow={filterWindow}
             telegramEnabled={telegramEnabled}
           />
         </div>
