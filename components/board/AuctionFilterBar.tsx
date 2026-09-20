@@ -32,6 +32,13 @@ interface AuctionFilterBarProps {
   telegramEnabled: boolean;
 }
 
+/** Date and optional time back into the single `since` value. */
+function joinSince(date: string, time: string) {
+  const day = date.trim();
+  const clock = time.trim();
+  return day && clock ? `${day} ${clock}` : day;
+}
+
 export function AuctionFilterBar({
   filters,
   facets,
@@ -60,6 +67,9 @@ export function AuctionFilterBar({
       : customSince || filters.since
         ? "custom"
         : "all";
+
+  // The one `since` string is edited as two fields; the time is optional.
+  const [sinceDate = "", sinceTime = ""] = filters.since.trim().split(/\s+/);
 
   const groupOptions = useMemo(
     () => [
@@ -317,6 +327,22 @@ export function AuctionFilterBar({
             ]}
           />
 
+          <div className="grid grid-cols-2 gap-2">
+            <TextField
+              label="مهلت از"
+              placeholder="۱۴۰۵/۰۷/۱۴"
+              value={filters.deadlineFrom}
+              onValueChange={(value) => onChange({ deadlineFrom: value })}
+              inputMode="numeric"
+            />
+            <TextField
+              label="مهلت تا"
+              placeholder="۱۴۰۵/۰۷/۲۱"
+              value={filters.deadlineTo}
+              onValueChange={(value) => onChange({ deadlineTo: value })}
+              inputMode="numeric"
+            />
+          </div>
           <ToggleGroup<typeof sinceMode>
             label="تازه‌ها"
             value={sinceMode}
@@ -335,31 +361,34 @@ export function AuctionFilterBar({
           />
 
           {sinceMode === "custom" ? (
-            <TextField
-              label="جدید از تاریخ"
-              placeholder="۱۴۰۵/۰۶/۲۹"
-              value={filters.since}
-              onValueChange={(value) => onChange({ since: value })}
-              inputMode="numeric"
-            />
+            <div className="flex flex-col gap-1.5">
+              <div className="grid grid-cols-2 gap-2">
+                <TextField
+                  label="جدید از تاریخ"
+                  placeholder="۱۴۰۵/۰۶/۲۹"
+                  value={sinceDate}
+                  onValueChange={(value) =>
+                    onChange({ since: joinSince(value, sinceTime) })
+                  }
+                  inputMode="numeric"
+                />
+                <TextField
+                  label="ساعت (اختیاری)"
+                  placeholder="۱۴:۳۰"
+                  value={sinceTime}
+                  disabled={!sinceDate}
+                  onValueChange={(value) =>
+                    onChange({ since: joinSince(sinceDate, value) })
+                  }
+                  inputMode="numeric"
+                />
+              </div>
+              {sinceDate && !sinceTime ? (
+                <p className="text-xs text-subtle">از ساعت ۰۰:۰۰ همان روز</p>
+              ) : null}
+            </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-2">
-            <TextField
-              label="مهلت از"
-              placeholder="۱۴۰۵/۰۷/۱۴"
-              value={filters.deadlineFrom}
-              onValueChange={(value) => onChange({ deadlineFrom: value })}
-              inputMode="numeric"
-            />
-            <TextField
-              label="مهلت تا"
-              placeholder="۱۴۰۵/۰۷/۲۱"
-              value={filters.deadlineTo}
-              onValueChange={(value) => onChange({ deadlineTo: value })}
-              inputMode="numeric"
-            />
-          </div>
         </div>
       ) : null}
 

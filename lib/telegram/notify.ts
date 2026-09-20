@@ -3,6 +3,7 @@ import "server-only";
 import {
   applyAuctionFilters,
   buildFilterWindow,
+  describeSince,
   type AuctionFilters,
 } from "@/lib/eauc/filters";
 import type { AuctionRecord, AuctionSnapshot } from "@/lib/eauc/types";
@@ -53,11 +54,17 @@ function buildMessage(
       ? `\n… و ${matches.length - MAX_TITLES_IN_MESSAGE} مورد دیگر`
       : "";
 
+  // The link opens everything since this moment, which can be more than the
+  // lots listed here once later syncs have run, so its label names the moment
+  // rather than a count.
+  const when = describeSince(since);
+
   return (
+    `📅 ${when}\n\n` +
     `<b>${toPersianDigits(String(matches.length))} پارتی جدید</b> مطابق «${escapeHtml(label)}»\n\n` +
     `${titles}${more}` +
     (link
-      ? `\n\n<a href="${link}">مشاهده همه ${toPersianDigits(String(matches.length))} مورد در تابلو</a>`
+      ? `\n\n<a href="${link}">مشاهده همه موارد جدید از ${when}</a>`
       : "")
   );
 }

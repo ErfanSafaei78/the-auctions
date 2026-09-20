@@ -196,7 +196,16 @@ export function describeSince(since: string): string {
     "7d": "۷ روز اخیر",
   };
 
-  return isSinceKeyword(since) ? labels[since] : toPersianDigits(since);
+  if (isSinceKeyword(since)) return labels[since];
+
+  // A bare date means the start of that day, so say so instead of leaving the
+  // time off and letting "1405/06/29" read like the whole day.
+  const key = jalaliInputToSortKey(since);
+  if (!key) return toPersianDigits(since);
+
+  return toPersianDigits(
+    `${key.slice(0, 4)}/${key.slice(4, 6)}/${key.slice(6, 8)} ${key.slice(8, 10)}:${key.slice(10)}`,
+  );
 }
 
 /**

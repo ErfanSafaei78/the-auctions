@@ -32,6 +32,7 @@ export const TextField = React.forwardRef<HTMLInputElement, TextFieldProps>(
               "h-9 w-full rounded-md border border-line bg-surface px-3 pe-8 text-sm text-fg",
               "placeholder:text-subtle transition-[border-color,box-shadow] duration-150 ease-out",
               "focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-soft",
+              "disabled:cursor-not-allowed disabled:opacity-50",
               className,
             )}
             {...props}
