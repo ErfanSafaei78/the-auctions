@@ -202,7 +202,7 @@ export function AuctionFilterBar({
       aria-label="فیلترها"
       className="rounded-xl border border-line bg-surface p-4 shadow-panel"
     >
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <button
           type="button"
           aria-expanded={open}
@@ -218,7 +218,7 @@ export function AuctionFilterBar({
           ) : null}
         </button>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center justify-end gap-1">
           {telegramEnabled ? <TelegramSubscribeButton filters={filters} /> : null}
           {activeCount > 0 ? (
             <Button
